@@ -17,7 +17,7 @@ def creation_dataframe(path):
     df=pd.DataFrame(data).drop(columns="id")
     return df
 
-class MemeDataset(Dataset):
+class CreationClipDataset(Dataset):
     def __init__(self, df):
         self.df=df
         self.to_tensor=transforms.ToTensor()
@@ -35,10 +35,10 @@ class MemeDataset(Dataset):
         label=self.df["label"].iloc[idx]
         return {"images": img, "texts": text,"labels":label}
 
-
-def preprocessing(dataloader,processor):
-    all=[]
-    for batch in dataloader:
-        inputs=processor(list(batch["images"]),batch["texts"],return_tensors="pt", padding=True, max_length=77, truncation=True)
-        all.append(inputs)
-    return all
+class CreationProcessedDataset(Dataset):
+    def __init__(self,data):
+        self.data=data
+    def __len__(self):
+        return len(self.data["labels"])
+    def __getitem__(self, idx):
+        return {"images_embeddings":self.data["images_embeddings"][idx],"texts_embeddings":self.data["texts_embeddings"][idx],"labels":self.data["labels"][idx]}
