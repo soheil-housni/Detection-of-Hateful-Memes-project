@@ -5,22 +5,20 @@ import torch
 from loguru import logger
 
 class Train():
-    def __init__(self,processor,model,loss_fn,optmizer,n_epochs, train_dataloader,val_dataloader,scheduler,device,batch_size,patience,min_improvement):
+    def __init__(self,processor,model,loss_fn,optmizer,n_epochs,scheduler,device,batch_size,patience,min_improvement):
         self.processor=processor
         self.model=model
         self.device=device
         self.criterion=loss_fn
         self.optimizer=optmizer
         self.n_epochs=n_epochs
-        self.train_dataloader=train_dataloader
-        self.val_dataloader=val_dataloader
         self.scheduler=scheduler
         self.batch_size=batch_size
         self.model.to(self.device)
         self.patience=patience
         self.min_improvement=min_improvement
 
-    def run_training(self):
+    def run_training(self,train_dataloader,val_dataloader,with_clip=False,train_clip_dataloader=None,val_clip_dataloader=None):
         epoch_train_losses=[]
         epoch_train_f1=[]
         epoch_train_accuracies=[]
@@ -46,37 +44,57 @@ class Train():
                 previous_f1_score=0
             else:
                 previous_f1_score=epoch_val_f1[-1]
-
-            for batch in self.train_dataloader:
-                batch["texts_embeddings"]=batch["texts_embeddings"].to(self.device)
-                batch["images_embeddings"]=batch["images_embeddings"].to(self.device)
-                logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).view(-1)
-                targets=batch["labels"].to(self.device)
+            
+            iterator = zip(train_dataloader, train_clip_dataloader) if with_clip else train_dataloader
+            for batch in iterator:
+                if with_clip:
+                    for key in batch[0].keys():
+                        batch[0][key]=batch[0][key].float().to(self.device)
+                    for key in batch[1].keys():
+                        batch[1][key]=batch[1][key].float().to(self.device)
+                    logits=self.model(pooler_embedding=batch[0]['pooler_embeddings'],clip_text_embedding=batch[1]['texts_embeddings'],clip_image_embedding=batch[1]["images_embeddings"]).float()
+                    targets=batch[0]["labels"].long().to(self.device)
+                else:
+                    for key in batch.keys():
+                        batch[key]=batch[key].float().to(self.device)
+                    logits=self.model(batch['pooler_embeddings']).float()
+                    targets=batch["labels"].long().to(self.device)
                 loss=self.criterion(logits,targets)
 
                 self.optimizer.zero_grad()
                 loss.backward()
-                self.optimizer.step()
                 self.scheduler.step()
 
                 batch_train_losses.append(loss.detach().item())
-                predictions=(logits.detach()>=0).long()
+                predictions=torch.argmax(logits.detach(),dim=1).long()
 
                 all_train_predictions.append(predictions)
                 all_train_targets.append(targets)
+            
+            self.optimizer.step()
                 
 
             self.model.eval()
             batch_val_losses=[]
-            for batch in self.val_dataloader:
+
+            iterator = zip(val_dataloader, val_clip_dataloader) if with_clip else val_dataloader
+            for batch in iterator:
                 with torch.no_grad():
-                    batch["texts_embeddings"]=batch["texts_embeddings"].to(self.device)
-                    batch["images_embeddings"]=batch["images_embeddings"].to(self.device)
-                    logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).view(-1)
-                    targets=batch["labels"].to(self.device)
+                    if with_clip:
+                        for key in batch[0].keys():
+                            batch[0][key]=batch[0][key].float().to(self.device)
+                        for key in batch[1].keys():
+                            batch[1][key]=batch[1][key].float().to(self.device)
+                        logits=self.model(pooler_embedding=batch[0]['pooler_embeddings'],clip_text_embedding=batch[1]['texts_embeddings'],clip_image_embedding=batch[1]["images_embeddings"]).float()
+                        targets=batch[0]["labels"].long().to(self.device)
+                    else:
+                        for key in batch.keys():
+                            batch[key]=batch[key].float().to(self.device)
+                        logits=self.model(batch['pooler_embeddings']).float()
+                        targets=batch["labels"].long().to(self.device)
                     loss=self.criterion(logits,targets)
                     batch_val_losses.append(loss.detach().item())
-                    predictions=(logits.detach()>=0).long()
+                    predictions=torch.argmax(logits.detach(),dim=1).long()
 
                     all_val_targets.append(targets)
                     all_val_predictions.append(predictions)
@@ -111,7 +129,6 @@ class Train():
                 epoch_counter=0
             
             if epoch_counter>=self.patience:
-                break
                 logger.info(f"Training stops after {epoch} epochs")
-
-                
+                break
+            

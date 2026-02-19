@@ -2,17 +2,16 @@ import torch
 import torch.nn as nn
 
 class HeadClassifierClipModel(nn.Module):
-    def __init__(self,use_n_layers=1, fc_layer_sizes=[1024], h=8, dmodel=512, dropout=0.1):
+    def __init__(self,use_n_layers=1, fc_layer_sizes=[512], dmodel=512, dropout=0.1):
         super().__init__()
         self.dmodel=dmodel
-        self.h=h
         self.fc_layer_sizes=fc_layer_sizes[:use_n_layers]
         fc_layers=[nn.Linear(self.dmodel*2,self.fc_layer_sizes[0])]
         fc_norm_layers=[nn.LayerNorm(self.fc_layer_sizes[0])]
 
         for i in range(len(self.fc_layer_sizes)):
             if i == len(self.fc_layer_sizes)-1:
-                fc_layers.append(nn.Linear(self.fc_layer_sizes[i],1))
+                fc_layers.append(nn.Linear(self.fc_layer_sizes[i],2))
             else:
                 fc_layers.append(nn.Linear(self.fc_layer_sizes[i],self.fc_layer_sizes[i+1]))
                 fc_norm_layers.append(nn.LayerNorm(self.fc_layer_sizes[i+1]))
@@ -20,16 +19,12 @@ class HeadClassifierClipModel(nn.Module):
         self.fc_layers=nn.ModuleList(fc_layers)
         self.fc_norm_layers=nn.ModuleList(fc_norm_layers)
 
-        self.MHA=nn.MultiheadAttention(self.dmodel,self.h,dropout=0.1,batch_first=True)
-        self.MHA_norm=nn.LayerNorm(self.dmodel)
         self.dropout=dropout
 
 
     
     def forward(self,texts_embeddings, images_embeddings):
-        concat=torch.stack([texts_embeddings,images_embeddings],dim=1)
-        MHA_output=self.MHA(concat,concat,concat,need_weights=False)[0]
-        x=self.MHA_norm((concat+MHA_output)).view(-1,self.dmodel*2)
+        x=torch.cat([texts_embeddings,images_embeddings],dim=1)
         for i in range(len(self.fc_layers)-1):
             x=self.fc_layers[i](x)
             x=self.fc_norm_layers[i](x)

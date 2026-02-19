@@ -1,10 +1,10 @@
 from .Preprocessing import creation_dataframe,CreationClipDataset,CreationProcessedDataset
 from .Train import Train
 from .Models_architectures import HeadClassifierClipModel
-from .Clip_embeddings import ClipEmbeddings
+from .Clip_embeddings import ClipExtractor
 
 assert creation_dataframe,CreationClipDataset
 assert CreationProcessedDataset
 assert Train
 assert HeadClassifierClipModel
-assert ClipEmbeddings
+assert ClipExtractor
