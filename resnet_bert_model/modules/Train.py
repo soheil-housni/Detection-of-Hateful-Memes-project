@@ -21,10 +21,10 @@ class Train():
         self.freeze_layers(n_frozen_distilbert_layers,n_frozen_resnet_layers)
 
         head_params,backbone_params=self.get_params()
-        self.optimizer=AdamW([{"params": head_params, "lr": lr},{"params": backbone_params, "lr": 1e-5}],weight_decay=weight_decay)
-        #self.optimizer=AdamW(backbone_params+head_params,lr=lr,weight_decay=weight_decay)
-        #self.scheduler=get_linear_schedule_with_warmup(self.optimizer,n_warmup_steps,n_steps)
-        self.scheduler=ReduceLROnPlateau(self.optimizer,mode="max",factor=0.5,patience=1,threshold=1e-3)
+        #self.optimizer=AdamW([{"params": head_params, "lr": lr},{"params": backbone_params, "lr": 1e-4}],weight_decay=weight_decay)
+        self.optimizer=AdamW(backbone_params+head_params,lr=lr,weight_decay=weight_decay)
+        self.scheduler=get_linear_schedule_with_warmup(self.optimizer,n_warmup_steps,n_steps)
+        #self.scheduler=ReduceLROnPlateau(self.optimizer,mode="max",factor=0.5,patience=1,threshold=1e-3)
 
     def get_params(self):
         head_params=[]
@@ -106,7 +106,7 @@ class Train():
                 all_train_predictions.append(predictions)
                 all_train_targets.append(targets)
             
-            #self.scheduler.step()
+            self.scheduler.step()
 
             self.model.eval()
             batch_val_losses=[]
@@ -140,7 +140,7 @@ class Train():
             epoch_val_f1.append(val_f1_score)
             epoch_val_accuracies.append(accuracy_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy()))
 
-            self.scheduler.step(val_f1_score)
+            #self.scheduler.step(val_f1_score)
 
             logger.info(f"Epoch {epoch}: Train Loss = {epoch_train_losses[epoch]}")
             logger.info(f"Epoch {epoch}: Train Accuracy = {epoch_train_accuracies[epoch]}")
@@ -159,7 +159,6 @@ class Train():
             
             if epoch_counter>=self.patience:
                 logger.info(f"Training stops after {epoch} epochs")
-                self.save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
                 break
         
         self.save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
