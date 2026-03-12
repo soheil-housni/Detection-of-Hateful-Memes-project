@@ -1,14 +1,85 @@
 import torch
 import torch.nn as nn
+from transformers import CLIPModel
+from torch.utils.data import DataLoader
 
-class ClipExtractor():
-    def __init__(self,clip_model,device):
+"""
+This class enables to extract the outputs of the pretrained CLIP model that will then be used
+in the custom head classifier.
+More specifically, it extracts the texts embeddings, the images embeddings, and the similarity scores
+of the CLIP model
+"""
+class CLIPExtractor():
+    def __init__(self,
+                 clip_model:CLIPModel,
+                 device:torch.device):
         super().__init__()
         self.clip_model=clip_model
         self.device=device
         self.clip_model.to(device)
 
-    def get_embeddings(self,train_clip_dataloader,val_clip_dataloader,path):
+    def get_embeddings(self,
+                       dataloader:DataLoader,
+                       set_type:str,
+                       path:str) -> dict:
+
+        """
+        Args:
+        FLAVA_dataloader: dataloader used for the forward of the pretrained CLIP model
+        set_type: type of the dataset being processed (train,validation,test)
+        path: path where to save the CLIP embeddings
+        
+
+        Return:
+        Dictionnary containing all the outputs of the forward of the pretrained FLAVA model,
+        including texts embeddings, images embeddings, and similarity scores
+        """
+        
+        all_data={}
+        #dictionnary containing the images embeddings, text embeddings, similarity scores,
+        #and labels
+
+        all_texts_embeddings=[]
+        #list of all the texts embeddings
+        all_images_embeddings=[]
+        #list of all the images embeddings
+        all_sim_scores=[]
+        #list of all similarity scores
+        all_labels=[]
+        #list of all labels
+
+        self.clip_model.eval()
+        with torch.inference_mode():
+            for batch in dataloader:
+                for key in batch.keys():
+                    batch[key]=batch[key].to(self.device)
+                outputs=self.clip_model(input_ids=batch["input_ids"],pixel_values=batch["pixel_values"],attention_mask=batch["attention_mask"])
+                all_texts_embeddings.append(outputs["text_embeds"])
+                all_images_embeddings.append(outputs["image_embeds"])
+                for i in range(len(outputs.logits_per_image)):
+                    all_sim_scores.append(outputs.logits_per_image[i,i].item())
+                    #here, we extract only the similarity score of the image with its 
+                    #true corresponding text (diagonal value of the matrix)
+                all_labels.append(batch["labels"])
+
+        all_texts_embeddings=torch.cat(all_texts_embeddings,dim=0)
+        all_images_embeddings=torch.cat(all_images_embeddings,dim=0)
+        all_sim_scores=torch.tensor(all_sim_scores)
+        all_labels=torch.cat(all_labels)
+
+        all_data={"texts_embeddings":all_texts_embeddings,"images_embeddings":all_images_embeddings,"sim_scores":all_sim_scores,"labels":all_labels}
+        all_data={"texts_embeddings":all_texts_embeddings,"images_embeddings":all_images_embeddings,"sim_scores":all_sim_scores,"labels":all_labels}
+
+        torch.save(all_data,f"{path}/{set_type}_clip_embeddings.pt")
+        print(f"{set_type} CLIP embeddings saved in {path}")
+
+        return all_data
+
+    """
+    def get_embeddings(self,
+                       train_clip_dataloader,
+                       val_clip_dataloader,
+                       path):
         all_train_data={}
         all_val_data={}
 
@@ -62,3 +133,4 @@ class ClipExtractor():
         print(f"Clip embeddings saved in {path}")
 
         return all_train_data,all_val_data
+        """

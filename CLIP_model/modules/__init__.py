@@ -1,10 +1,6 @@
-from .Preprocessing import creation_dataframe,CreationClipDataset,CreationProcessedDataset
-from .Train import Train
-from .Models_architectures import HeadClassifierClipModel
-from .Clip_embeddings import ClipExtractor
-
-assert creation_dataframe,CreationClipDataset
-assert CreationProcessedDataset
-assert Train
-assert HeadClassifierClipModel
-assert ClipExtractor
+from .train import Train
+from .models_architectures import HeadClassifierCLIPModel
+from .clip_embeddings import CLIPExtractor
+from .dataloader_collate_function import CLIPCollateFunction
+from .creation_datasets import CreationClipDataset,CreationProcessedDataset
+from .creation_dataframes import creation_dataframe

@@ -3,58 +3,129 @@ from sklearn.metrics import f1_score
 from sklearn.metrics import accuracy_score
 import torch
 from loguru import logger
+from .models_architectures import HeadClassifierCLIPModel
+from torch.nn.modules import loss
+from torch.utils.data import DataLoader
 
 class Train():
-    def __init__(self,processor,model,loss_fn,optmizer,n_epochs,scheduler,device,batch_size,patience,min_improvement):
-        self.processor=processor
+    def __init__(self,
+                model:HeadClassifierCLIPModel,
+                loss_fn: loss,
+                optmizer: torch.optim,
+                n_epochs: int,
+                scheduler: torch.optim.lr_scheduler,
+                device: torch.device,
+                patience: int =2,
+                min_improvement: float=1e-3):
+        
+        """
+        model: Head classifier for the CLIP model we want to train
+        loss_fn: loss function used for the training
+        optmizer: optimizer used for the training
+        n_epochs: number of epochs for the training
+        scheduler: scheduler used to decrease the learning rate during the training
+        device: device used for the training
+        batch_size: size of the batch
+        patience: the number of epochs to wait when the performance does not improve before stopping the training
+        min_improvement: the minimum improvement the model need to accomplish to be considered as an actual improvement that reinitialize the patience counter
+        """
+        
         self.model=model
         self.device=device
         self.criterion=loss_fn
         self.optimizer=optmizer
         self.n_epochs=n_epochs
         self.scheduler=scheduler
-        self.batch_size=batch_size
         self.model.to(self.device)
         self.patience=patience
         self.min_improvement=min_improvement
 
-    def run_training(self,train_dataloader,val_dataloader):
+
+    """
+    This function saves the performances per epoch of the model
+    """
+
+    def save_performances(self,
+                          path:str,
+                          epoch_train_losses:list,
+                          epoch_train_f1:list,
+                          epoch_train_accuracies:list,
+                          epoch_val_losses:list,
+                          epoch_val_f1:list,
+                          epoch_val_accuracies:list):
+        
+        train_performances={
+            "epoch_train_losses":torch.tensor(epoch_train_losses),
+            "epoch_train_f1":torch.tensor(epoch_train_f1),
+            "epoch_train_accuracies":torch.tensor(epoch_train_accuracies),
+
+            "epoch_val_losses":torch.tensor(epoch_val_losses),
+            "epoch_val_f1":torch.tensor(epoch_val_f1),
+            "epoch_val_accuracies":torch.tensor(epoch_val_accuracies)
+        }   
+        torch.save(train_performances,f"{path}/epoch_performances.pt")
+
+    def run_training(self,
+                     train_dataloader: DataLoader,
+                     val_dataloader: DataLoader,
+                     path: str):
+        
+        """
+        Args:
+        train_dataloader: dataloader of the training set used for the training
+        val_dataloader: dataloader of the validation set used for the training
+        path: path where to save the performances of the training
+        """
+        
         epoch_train_losses=[]
+        #list of training loss per epoch
         epoch_train_f1=[]
+        #list of f1 score per epoch
         epoch_train_accuracies=[]
+        #list of accuracy per epoch
 
         epoch_val_losses=[]
+        #list of validation loss per epoch
         epoch_val_f1=[]
+        #list of validation f1 per epoch
         epoch_val_accuracies=[]
+        #list of validation accuracy per epoch
 
         epoch_counter=0
+        best_val_f1=0
+        
         for epoch in range(self.n_epochs):
             self.model.train()
             batch_train_losses=[]
+            #list of train loss per batch in the current epoch
 
             all_train_targets=[]
+            #list of all the targets of the train dataloader for the batch
             all_train_predictions=[]
+            #list of all the prediction of the train dataloader for the batch
+
 
             all_val_targets=[]
+            #list of all the targets of the validation dataloader for the batch
             all_val_predictions=[]
+            #list of all the prediction of the validation dataloader for the batch
 
             logger.info(f"Epoch {epoch} :")
 
-            if not epoch_val_f1:
-                previous_f1_score=0
-            else:
-                previous_f1_score=epoch_val_f1[-1]
-
             for batch in train_dataloader:
-                for key in batch.keys():
-                    batch[key]=batch[key].float().to(self.device)
+                batch["texts_embeddings"]=batch["texts_embeddings"].float().to(self.device)
+                batch["images_embeddings"]=batch["images_embeddings"].float().to(self.device)
                 logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).float()
                 targets=batch["labels"].long().to(self.device)
+                #Forward of the model that returns the logits
                 loss=self.criterion(logits,targets)
-
+                #Computation of the train batch loss
                 self.optimizer.zero_grad()
+                #Reset gradients of all parameters to zero
                 loss.backward()
+                #Computation of the gradient of the loss with respect to each parameter
                 self.optimizer.step()
+                #Update of the parameters using the gradient descent
 
                 batch_train_losses.append(loss.detach().item())
                 predictions=torch.argmax(logits.detach(),dim=1).long()
@@ -63,16 +134,19 @@ class Train():
                 all_train_targets.append(targets)
             
             self.scheduler.step()
+            #Update of the learning rate at the end of the epoch
 
             self.model.eval()
             batch_val_losses=[]
-            for batch in val_dataloader:
-                with torch.no_grad():
-                    for key in batch.keys():
-                        batch[key]=batch[key].float().to(self.device)
+            with torch.no_grad():
+                for batch in val_dataloader:
+                    batch["texts_embeddings"]=batch["texts_embeddings"].float().to(self.device)
+                    batch["images_embeddings"]=batch["images_embeddings"].float().to(self.device)
                     logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).float()
+                    #Forward of the model that returns the logits
                     targets=batch["labels"].long().to(self.device)
                     loss=self.criterion(logits,targets)
+                    #Computation of the validation batch loss
                     batch_val_losses.append(loss.detach().item())
                     predictions=torch.argmax(logits.detach(),dim=1).long()
 
@@ -88,12 +162,16 @@ class Train():
 
             epoch_train_losses.append(np.mean(batch_train_losses))
             epoch_train_f1.append(f1_score(all_train_targets.cpu().numpy(),all_train_predictions.cpu().numpy()))
+            #Computation of the train f1 score for the epoch
             epoch_train_accuracies.append(accuracy_score(all_train_targets.cpu().numpy(),all_train_predictions.cpu().numpy()))
+            #Computation of the train accuracy score for the epoch
 
             val_f1_score=f1_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy())
+            #Computation of the validation f1 score for the epoch
             epoch_val_losses.append(np.mean(batch_val_losses))
             epoch_val_f1.append(val_f1_score)
             epoch_val_accuracies.append(accuracy_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy()))
+            #Computation of the validation accuracy score for the epoch
 
             logger.info(f"Epoch {epoch}: Train Loss = {epoch_train_losses[epoch]}")
             logger.info(f"Epoch {epoch}: Train Accuracy = {epoch_train_accuracies[epoch]}")
@@ -103,13 +181,18 @@ class Train():
             logger.info(f"Epoch {epoch}: Validation Accuracy = {epoch_val_accuracies[epoch]}")
             logger.info(f"Epoch {epoch}: Validation F1 = {epoch_val_f1[epoch]}")
 
-            if val_f1_score<previous_f1_score+self.min_improvement:
+            #Early stopping
+            if val_f1_score<best_val_f1+self.min_improvement:
                 epoch_counter+=1
             else:
                 epoch_counter=0
+                best_val_f1=val_f1_score
+                torch.save(self.model.state_dict(),f"{path}/model_state.pt")                
             
             if epoch_counter>=self.patience:
-                break
                 logger.info(f"Training stops after {epoch} epochs")
+                break
+
+        self.save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
 
                 

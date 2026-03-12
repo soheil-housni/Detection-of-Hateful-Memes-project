@@ -1,8 +1,27 @@
 import torch
 import torch.nn as nn
 
-class HeadClassifierFlavaModel(nn.Module):
-    def __init__(self,use_n_layers=1, fc_layer_sizes=[384], dmodel=768, dropout=0.1, with_clip_image=False,with_clip_text=False,clip_dmodel=512):
+class HeadClassifierFLAVAModel(nn.Module):
+    def __init__(self,
+                 use_n_layers:int=1,
+                 fc_layer_sizes:list[int]=[384],
+                 dmodel:int=768,
+                 dropout:float=0.3,
+                 with_clip_image:bool=False,
+                 with_clip_text:bool=False,
+                 clip_dmodel:int=512):
+        
+        """
+        Args:
+        use_n_layers: number of layers to used in the FNN
+        fc_layer_sizes: sizes of the layers used in the FNN
+        dmodel: hidden dimension of the outputs of the pretrained FLAVA model
+        dropout: dropout probability used in the model
+        with_clip_image: use of the CLIP images embeddings to concatenate with FLAVA embeddings
+        with_clip_text: use of the CLIP texts embeddings to concatenate with FLAVA embeddings
+        clip_dmodel: hidden dimension of CLIP embeddings
+        """
+        
         super().__init__()
         self.dmodel=dmodel
         self.fc_layer_sizes=fc_layer_sizes[:use_n_layers]
@@ -16,6 +35,8 @@ class HeadClassifierFlavaModel(nn.Module):
 
         else:
             self.enter_dim=self.dmodel
+
+        self.first_layer_norm=nn.LayerNorm(self.enter_dim)
             
         fc_layers=[nn.Linear(self.enter_dim,self.fc_layer_sizes[0])]
         fc_norm_layers=[nn.LayerNorm(self.fc_layer_sizes[0])]
@@ -31,12 +52,21 @@ class HeadClassifierFlavaModel(nn.Module):
         self.fc_norm_layers=nn.ModuleList(fc_norm_layers)
 
         self.dropout=dropout
-
-        self.first_layer_norm=nn.LayerNorm(self.enter_dim)
-
-
     
-    def forward(self,pooler_embedding,clip_text_embedding=None,clip_image_embedding=None):
+    def forward(self,
+                pooler_embedding,
+                clip_text_embedding=None,
+                clip_image_embedding=None):
+        
+        """
+        Args:
+        pooler_embedding: torch tensor of the pretrained FLAVA pooler embeddings (batch_size,768)
+        clip_text_embedding: torch tensor of the pretrained CLIP texts embeddings (batch_size,512)
+        clip_images_embedding: torch tensor of the pretrained CLIP images embeddings (batch_size,512)
+
+        Return:
+        logits: torch tensor (batch_size,n_classes)=(batch_size,2)
+        """
         if clip_text_embedding is not None and clip_image_embedding is not None:
             x=torch.cat([pooler_embedding,clip_text_embedding,clip_image_embedding],dim=1)
         elif clip_text_embedding is not None:
@@ -45,6 +75,7 @@ class HeadClassifierFlavaModel(nn.Module):
             x=torch.cat([pooler_embedding,clip_image_embedding],dim=1)
         else:
             x=pooler_embedding
+        #concatenation of FLAVA and CLIP embeddings if possible
             
         x=self.first_layer_norm(x)
         for i in range(len(self.fc_layers)-1):
