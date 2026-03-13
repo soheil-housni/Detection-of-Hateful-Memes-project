@@ -68,13 +68,15 @@ class Train():
     def run_training(self,
                      train_dataloader: DataLoader,
                      val_dataloader: DataLoader,
-                     path: str):
+                     path: str,
+                     with_scores:bool=False):
         
         """
         Args:
         train_dataloader: dataloader of the training set used for the training
         val_dataloader: dataloader of the validation set used for the training
         path: path where to save the performances of the training
+        with_scores: define whether we use similarity scores in the input or not
         """
         
         epoch_train_losses=[]
@@ -115,7 +117,11 @@ class Train():
             for batch in train_dataloader:
                 batch["texts_embeddings"]=batch["texts_embeddings"].float().to(self.device)
                 batch["images_embeddings"]=batch["images_embeddings"].float().to(self.device)
-                logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).float()
+                if with_scores:
+                    batch["sim_scores"]=batch["sim_scores"].float().to(self.device)
+                    logits=self.model(batch["texts_embeddings"],batch["images_embeddings"],batch["sim_scores"]).float()
+                else:
+                    logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).float()
                 targets=batch["labels"].long().to(self.device)
                 #Forward of the model that returns the logits
                 loss=self.criterion(logits,targets)
@@ -142,8 +148,11 @@ class Train():
                 for batch in val_dataloader:
                     batch["texts_embeddings"]=batch["texts_embeddings"].float().to(self.device)
                     batch["images_embeddings"]=batch["images_embeddings"].float().to(self.device)
-                    logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).float()
-                    #Forward of the model that returns the logits
+                    if with_scores:
+                        batch["sim_scores"]=batch["sim_scores"].float().to(self.device)
+                        logits=self.model(batch["texts_embeddings"],batch["images_embeddings"],batch["sim_scores"]).float()
+                    else:
+                        logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).float()
                     targets=batch["labels"].long().to(self.device)
                     loss=self.criterion(logits,targets)
                     #Computation of the validation batch loss
@@ -161,12 +170,12 @@ class Train():
 
 
             epoch_train_losses.append(np.mean(batch_train_losses))
-            epoch_train_f1.append(f1_score(all_train_targets.cpu().numpy(),all_train_predictions.cpu().numpy()))
+            epoch_train_f1.append(f1_score(all_train_targets.cpu().numpy(),all_train_predictions.cpu().numpy(),average="weighted"))
             #Computation of the train f1 score for the epoch
             epoch_train_accuracies.append(accuracy_score(all_train_targets.cpu().numpy(),all_train_predictions.cpu().numpy()))
             #Computation of the train accuracy score for the epoch
 
-            val_f1_score=f1_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy())
+            val_f1_score=f1_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy(),average="weighted")
             #Computation of the validation f1 score for the epoch
             epoch_val_losses.append(np.mean(batch_val_losses))
             epoch_val_f1.append(val_f1_score)

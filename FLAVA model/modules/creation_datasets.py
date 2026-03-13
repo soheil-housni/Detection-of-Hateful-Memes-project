@@ -30,11 +30,11 @@ that reaches to multimodal embeddings (images and texts) and pooler embeddings.
 This dataset is used for the training of the custom model.
 """
 class CreationProcessedDataset(Dataset):
-    def __init__(self,data):
+    def __init__(self,data:dict):
         self.data=data
-    def __len__(self):
+    def __len__(self)->int:
         return len(self.data["labels"])
-    def __getitem__(self,idx):
+    def __getitem__(self,idx:int)-> dict:
         return {'multimodal_embeddings':self.data["multimodal_embeddings"][idx],"pooler_embeddings":self.data["pooler_embeddings"][idx],\
                 "images_embeddings":self.data["images_embeddings"][idx],"texts_embeddings":self.data["texts_embeddings"][idx],\
                     "sim_scores":self.data["sim_scores"][idx],"labels":self.data["labels"][idx]}

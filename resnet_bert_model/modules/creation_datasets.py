@@ -13,7 +13,7 @@ Custom Dataset class respecting Pytorch standards (torch.utils.data.Dataset)
 that tansforms images of the dataset to respect the standards used by the resnet18 model
 """
 class CreationDataset(Dataset):
-    def __init__(self, df:pd.DataFrame):
+    def __init__(self, df:pd.DataFrame, clip_embedding_path:str):
         self.df=df
         self.transformation=transforms.Compose([
             transforms.Resize(256),
@@ -21,8 +21,9 @@ class CreationDataset(Dataset):
             transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         ])
+        self.clip_embeddings=torch.load(clip_embedding_path)
 
-    def __len__(self):
+    def __len__(self) ->int:
         return len(self.df)
 
     def __getitem__(self,idx:int) -> dict:
@@ -31,4 +32,6 @@ class CreationDataset(Dataset):
         img=self.transformation(img)
         text=self.df["text"].iloc[idx]
         label=self.df["label"].iloc[idx]
-        return {"images": img, "texts": text,"labels":label}
+        element_dict={"images": img, "texts": text,"labels":label}
+        element_dict.update({"texts_embeddings":self.clip_embeddings["texts_embeddings"][idx],"images_embeddings":self.clip_embeddings["images_embeddings"][idx]})
+        return element_dict

@@ -63,7 +63,7 @@ class Train():
     def get_params(self) ->Tuple[List[torch.nn.Parameter], ...]:
         head_params=[]
         backbone_params=[]
-        for module in [self.model.projection_image,self.model.mha,self.model.fc_layers,self.model.fc_norm_layers,self.model.layer_norm_mha]:
+        for module in [self.model.projection_image,self.model.layer_norm_image,self.model.layer_norm_text,self.model.ca_text,self.model.ca_image,self.model.layer_norm_ca_image,self.model.layer_norm_ca_text,self.model.fc_layers,self.model.fc_norm_layers]:
             head_params+=[p for p in module.parameters() if p.requires_grad==True]
         for module in [self.model.distilbert_model,self.model.resnet_model]:
             backbone_params+=[p for p in module.parameters() if p.requires_grad==True]
@@ -128,7 +128,9 @@ class Train():
     def run_training(self,
                      train_dataloader: DataLoader,
                      val_dataloader: DataLoader,
-                     path: str):
+                     path: str,
+                     with_clip_text:bool=False,
+                     with_clip_images:bool=False):
         
         epoch_train_losses=[]
         #list of training loss per epoch
@@ -168,7 +170,20 @@ class Train():
                 batch["images"] = batch["images"].float().to(self.device)
                 batch["input_ids"] = batch["input_ids"].long().to(self.device)
                 batch["attention_mask"] = batch["attention_mask"].long().to(self.device)
-                logits=self.model(batch["images"],batch["input_ids"],batch["attention_mask"]).float()
+                if with_clip_images:
+                    batch["images_embeddings"] = batch["images_embeddings"].float().to(self.device)
+                if with_clip_text:
+                    batch["texts_embeddings"] = batch["texts_embeddings"].float().to(self.device)
+
+                if with_clip_images and with_clip_text:
+                    logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"],clip_image_embeddings=batch["images_embeddings"]).float()
+                elif with_clip_images and not with_clip_text:
+                    logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_image_embeddings=batch["images_embeddings"]).float()
+                elif with_clip_text and not with_clip_images:
+                    logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"]).float()
+                else:
+                    logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"]).float()
+
                 #Forward of the model that returns the logits
                 targets=batch["labels"].long().to(self.device)
                 loss=self.criterion(logits,targets)
@@ -196,7 +211,19 @@ class Train():
                     batch["images"] = batch["images"].float().to(self.device)
                     batch["input_ids"] = batch["input_ids"].long().to(self.device)
                     batch["attention_mask"] = batch["attention_mask"].long().to(self.device)
-                    logits=self.model(batch["images"],batch["input_ids"],batch["attention_mask"]).float()
+                    if with_clip_images:
+                        batch["images_embeddings"] = batch["images_embeddings"].float().to(self.device)
+                    if with_clip_text:
+                        batch["texts_embeddings"] = batch["texts_embeddings"].float().to(self.device)
+
+                    if with_clip_images and with_clip_text:
+                        logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"],clip_image_embeddings=batch["images_embeddings"]).float()
+                    elif with_clip_images and not with_clip_text:
+                        logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_image_embeddings=batch["images_embeddings"]).float()
+                    elif with_clip_text and not with_clip_images:
+                        logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"]).float()
+                    else:
+                        logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"]).float()
                     #Forward of the model that returns the logits
                     targets=batch["labels"].long().to(self.device)
                     loss=self.criterion(logits,targets)

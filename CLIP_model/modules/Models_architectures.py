@@ -4,9 +4,10 @@ import torch.nn as nn
 class HeadClassifierCLIPModel(nn.Module):
     def __init__(self,
                  use_n_layers :int =1,
-                 fc_layer_sizes :list[int] =[512],
+                 fc_layer_sizes :list[int] =[1024],
                  dmodel: int=512,
-                 dropout: float=0.3):
+                 dropout: float=0.3,
+                 with_scores: bool =False):
         
         """
         Args:
@@ -14,11 +15,17 @@ class HeadClassifierCLIPModel(nn.Module):
         fc_layer_sizes: size of each layer used in the FNN
         dmodel: dimensionality of the embeddings output of the CLIP model
         dropout: dropout probability used in the model
+        with_scores: define whether we use similarity scores in the input or not
         """
         super().__init__()
         self.dmodel=dmodel
         self.fc_layer_sizes=fc_layer_sizes[:use_n_layers]
-        fc_layers=[nn.Linear(self.dmodel*2,self.fc_layer_sizes[0])]
+
+        if with_scores:
+            fc_layers=[nn.Linear(self.dmodel*5,self.fc_layer_sizes[0])]
+        else:
+            fc_layers=[nn.Linear(self.dmodel*4,self.fc_layer_sizes[0])]
+
         fc_norm_layers=[nn.LayerNorm(self.fc_layer_sizes[0])]
 
         for i in range(len(self.fc_layer_sizes)):
@@ -37,13 +44,19 @@ class HeadClassifierCLIPModel(nn.Module):
     
     def forward(self,
                 texts_embeddings: torch.Tensor,
-                images_embeddings: torch.Tensor) -> torch.Tensor:
+                images_embeddings: torch.Tensor,
+                sim_scores:torch.Tensor=None) -> torch.Tensor:
         """"
         Args:
         texts_embeddings: torch tensor of the texts CLIP embeddings (batch_size,512)
         images_embeddings: torch tensor of the images CLIP embeddings (batch_size,512)
         """
-        x=torch.cat([texts_embeddings,images_embeddings],dim=1)
+        if sim_scores is not None:
+            sim_scores=sim_scores.view(-1,1)
+            projected_sim_score=sim_scores.repeat(1, self.dmodel)
+            x=torch.cat([texts_embeddings,images_embeddings,abs(texts_embeddings-images_embeddings),texts_embeddings*images_embeddings,projected_sim_score],dim=1)
+        else:
+            x=torch.cat([texts_embeddings,images_embeddings,abs(texts_embeddings-images_embeddings),texts_embeddings*images_embeddings],dim=1)
         #concatenation of the text and image embeddings (batch_size,1024)
         for i in range(len(self.fc_layers)-1):
             x=self.fc_layers[i](x)

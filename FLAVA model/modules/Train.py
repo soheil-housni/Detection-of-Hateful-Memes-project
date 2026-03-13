@@ -66,6 +66,7 @@ class Train():
                      train_dataloader:DataLoader,
                      val_dataloader:DataLoader,
                      path: str,
+                     multimodal:bool=False,
                      with_clip:bool=False
                      ):
         """
@@ -73,6 +74,7 @@ class Train():
         train_dataloader: dataloader of the training set used for the training
         val_dataloader: dataloader of the validation set used for the training
         path: path where to save the performances of the training
+        multimodal: boolean indicating whether we use the HeadClassifierMultimodalFLAVAModel or not
         with_clip: boolean determining if we use CLIP embeddings or not (for concatenation)
         """
         
@@ -113,14 +115,25 @@ class Train():
 
             
             for batch in train_dataloader:
-                batch["pooler_embeddings"]=batch["pooler_embeddings"].float().to(self.device)
+                if multimodal:
+                    batch["multimodal_embeddings"]=batch["multimodal_embeddings"].float().to(self.device)
+                else:
+                    batch["pooler_embeddings"]=batch["pooler_embeddings"].float().to(self.device)
+
                 if with_clip:
                     batch["texts_embeddings"]=batch["texts_embeddings"].float().to(self.device)
                     batch["images_embeddings"]=batch["images_embeddings"].float().to(self.device)
-                    logits=self.model(pooler_embedding=batch['pooler_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
-                    #Forward of the model that returns the logits, using CLIP arguments
+                    if not multimodal:
+                        logits=self.model(pooler_embedding=batch['pooler_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
+                        #Forward of the model that returns the logits, using CLIP arguments
+                    else:
+                        logits=self.model(multimodal_embedding=batch['multimodal_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
                 else:
-                    logits=self.model(batch['pooler_embeddings']).float()
+                    if not multimodal:
+                        logits=self.model(pooler_embedding=batch['pooler_embeddings']).float()
+                    else:
+                        logits=self.model(multimodal_embedding=batch['multimodal_embeddings']).float()
+                    
                     #Forward of the model that returns the logits, without using CLIP arguments
                 targets=batch["labels"].long().to(self.device)
                 loss=self.criterion(logits,targets)
@@ -147,15 +160,25 @@ class Train():
 
             with torch.no_grad():
                 for batch in val_dataloader:
-                    batch["pooler_embeddings"]=batch["pooler_embeddings"].float().to(self.device)
+                    if multimodal:
+                        batch["multimodal_embeddings"]=batch["multimodal_embeddings"].float().to(self.device)
+                    else:
+                        batch["pooler_embeddings"]=batch["pooler_embeddings"].float().to(self.device)
+
                     if with_clip:
                         batch["texts_embeddings"]=batch["texts_embeddings"].float().to(self.device)
                         batch["images_embeddings"]=batch["images_embeddings"].float().to(self.device)
-                        logits=self.model(pooler_embedding=batch['pooler_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
-                        #Forward of the model that returns the logits, using CLIP arguments
+                        if not multimodal:
+                            logits=self.model(pooler_embedding=batch['pooler_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
+                            #Forward of the model that returns the logits, using CLIP arguments
+                        else:
+                            logits=self.model(multimodal_embedding=batch['multimodal_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
                     else:
-                        logits=self.model(batch['pooler_embeddings']).float()
-                        #Forward of the model that returns the logits, without using CLIP arguments
+                        if not multimodal:
+                            logits=self.model(pooler_embedding=batch['pooler_embeddings']).float()
+                        else:
+                            logits=self.model(multimodal_embedding=batch['multimodal_embeddings']).float()
+                    
                     targets=batch["labels"].long().to(self.device)
                     loss=self.criterion(logits,targets)
                     #Computation of the validation batch loss
@@ -173,12 +196,12 @@ class Train():
 
 
             epoch_train_losses.append(np.mean(batch_train_losses))
-            epoch_train_f1.append(f1_score(all_train_targets.cpu().numpy(),all_train_predictions.cpu().numpy()))
+            epoch_train_f1.append(f1_score(all_train_targets.cpu().numpy(),all_train_predictions.cpu().numpy(),average="weighted"))
             #Computation of the train f1 score for the epoch
             epoch_train_accuracies.append(accuracy_score(all_train_targets.cpu().numpy(),all_train_predictions.cpu().numpy()))
             #Computation of the train accuracy score for the epoch
 
-            val_f1_score=f1_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy())
+            val_f1_score=f1_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy(),average="weighted")
             #Computation of the validation f1 score for the epoch
             epoch_val_losses.append(np.mean(batch_val_losses))
             epoch_val_f1.append(val_f1_score)
