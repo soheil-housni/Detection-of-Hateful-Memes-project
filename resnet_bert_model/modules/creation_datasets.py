@@ -22,16 +22,18 @@ class CreationDataset(Dataset):
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         ])
         self.clip_embeddings=torch.load(clip_embedding_path)
+        self.new_index_list=list(self.df.index)
 
     def __len__(self) ->int:
         return len(self.df)
 
     def __getitem__(self,idx:int) -> dict:
+        real_index=self.new_index_list[idx]
         img_path = f"../data/{self.df['img'].iloc[idx]}"
         img=Image.open(img_path).convert("RGB")
         img=self.transformation(img)
         text=self.df["text"].iloc[idx]
         label=self.df["label"].iloc[idx]
         element_dict={"images": img, "texts": text,"labels":label}
-        element_dict.update({"texts_embeddings":self.clip_embeddings["texts_embeddings"][idx],"images_embeddings":self.clip_embeddings["images_embeddings"][idx]})
+        element_dict.update({"texts_embeddings":self.clip_embeddings["texts_embeddings"][real_index],"images_embeddings":self.clip_embeddings["images_embeddings"][real_index]})
         return element_dict

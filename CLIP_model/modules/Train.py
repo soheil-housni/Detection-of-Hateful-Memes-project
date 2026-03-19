@@ -6,6 +6,10 @@ from loguru import logger
 from .models_architectures import HeadClassifierCLIPModel
 from torch.nn.modules import loss
 from torch.utils.data import DataLoader
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from common_files import save_performances
 
 class Train():
     def __init__(self,
@@ -44,26 +48,6 @@ class Train():
     """
     This function saves the performances per epoch of the model
     """
-
-    def save_performances(self,
-                          path:str,
-                          epoch_train_losses:list,
-                          epoch_train_f1:list,
-                          epoch_train_accuracies:list,
-                          epoch_val_losses:list,
-                          epoch_val_f1:list,
-                          epoch_val_accuracies:list):
-        
-        train_performances={
-            "epoch_train_losses":torch.tensor(epoch_train_losses),
-            "epoch_train_f1":torch.tensor(epoch_train_f1),
-            "epoch_train_accuracies":torch.tensor(epoch_train_accuracies),
-
-            "epoch_val_losses":torch.tensor(epoch_val_losses),
-            "epoch_val_f1":torch.tensor(epoch_val_f1),
-            "epoch_val_accuracies":torch.tensor(epoch_val_accuracies)
-        }   
-        torch.save(train_performances,f"{path}/epoch_performances.pt")
 
     def run_training(self,
                      train_dataloader: DataLoader,
@@ -202,6 +186,6 @@ class Train():
                 logger.info(f"Training stops after {epoch} epochs")
                 break
 
-        self.save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
+        save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
 
                 

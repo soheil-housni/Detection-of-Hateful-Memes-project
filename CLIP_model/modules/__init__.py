@@ -3,4 +3,4 @@ from .models_architectures import HeadClassifierCLIPModel
 from .clip_embeddings import CLIPExtractor
 from .dataloader_collate_function import CLIPCollateFunction
 from .creation_datasets import CreationClipDataset,CreationProcessedDataset
-from .creation_dataframes import creation_dataframe
+from .split_clip import split_clip_embeddings

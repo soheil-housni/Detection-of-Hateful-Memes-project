@@ -13,7 +13,9 @@ class DistilbertResnetModel(nn.Module):
                  resnet_dmodel : int =512,
                  distilbert_dmodel : int =768,
                  dropout : float =0.3,
+                 dropout_ca:float=0.3,
                  concat_interaction:bool=False,
+                 simple_concat:bool=False,
                  with_clip_text:bool=False,
                  with_clip_image:bool=False,
                  clip_dmodel:int=512):
@@ -34,7 +36,9 @@ class DistilbertResnetModel(nn.Module):
         self.resnet_dmodel=resnet_dmodel
         self.clip_dmodel=clip_dmodel
         self.dropout=dropout
+        self.dropout_ca=dropout_ca
         self.concat_interaction=concat_interaction
+        self.simple_concat=simple_concat
 
         #Projection of the output of the resnet model (batch_size,49,512) in the space of the ouput of the distilbertmodel (batch_size,seq_len_768)
         #For the output of the resnet model, seq_len=49 as each kernel is of dimension (7,7), so when flattened, we have 49 patches.
@@ -44,38 +48,88 @@ class DistilbertResnetModel(nn.Module):
         self.layer_norm_text=nn.LayerNorm(self.distilbert_dmodel)
 
         #Self Multi-Head-Attention applied to the the concatennated tokens and image patches
-        self.ca_text=MultiheadAttention(self.distilbert_dmodel,num_heads=8,dropout=self.dropout, batch_first=True)
-        self.ca_image=MultiheadAttention(self.distilbert_dmodel,num_heads=8,dropout=self.dropout, batch_first=True)
+        self.ca_text=MultiheadAttention(self.distilbert_dmodel,num_heads=8,dropout=self.dropout_ca, batch_first=True)
+        self.ca_image=MultiheadAttention(self.distilbert_dmodel,num_heads=8,dropout=self.dropout_ca, batch_first=True)
 
-        self.layer_norm_ca_image=nn.LayerNorm(self.distilbert_dmodel)
-        self.layer_norm_ca_text=nn.LayerNorm(self.distilbert_dmodel)
+        self.fnn_ca_image=nn.Sequential(
+            nn.Linear(self.distilbert_dmodel,self.distilbert_dmodel//2),
+            nn.GELU(),
+            nn.Dropout(p=self.dropout_ca),
+            nn.Linear(self.distilbert_dmodel//2,self.distilbert_dmodel),
+        )
 
-        if with_clip_image:
-            self.projection_clip_image=nn.Linear(self.clip_dmodel,self.distilbert_dmodel)
+        self.fnn_ca_text=nn.Sequential(
+            nn.Linear(self.distilbert_dmodel,self.distilbert_dmodel//2),
+            nn.GELU(),
+            nn.Dropout(p=self.dropout_ca),
+            nn.Linear(self.distilbert_dmodel//2,self.distilbert_dmodel),
+        )
+
+        self.layer_norm_ca_attn_image=nn.LayerNorm(self.distilbert_dmodel)
+        self.layer_norm_ca_attn_text=nn.LayerNorm(self.distilbert_dmodel)
+
+        self.layer_norm_ca_fnn_image=nn.LayerNorm(self.distilbert_dmodel)
+        self.layer_norm_ca_fnn_text=nn.LayerNorm(self.distilbert_dmodel)
+
+
+        self.norm_text_pool=nn.LayerNorm(self.distilbert_dmodel)
+        self.norm_image_pool=nn.LayerNorm(self.distilbert_dmodel)
+
+        if self.concat_interaction:
+            self.projection_x=nn.Linear(4*self.distilbert_dmodel,self.distilbert_dmodel)
         
-        if with_clip_text:
-            self.projection_clip_text=nn.Linear(self.clip_dmodel,self.distilbert_dmodel)
+        if self.simple_concat:
+            self.projection_x=nn.Linear(2*self.distilbert_dmodel,self.distilbert_dmodel)
+        
+        self.norm_x=nn.LayerNorm(self.distilbert_dmodel)
+            
+
+        if with_clip_image and not with_clip_text:
+            self.norm_clip_image=nn.LayerNorm(self.clip_dmodel)
+
+        if not with_clip_image and with_clip_text:
+            self.norm_clip_text=nn.LayerNorm(self.clip_dmodel)
+
+        if with_clip_image and with_clip_text:
+            self.projection_clip_features=nn.Linear(self.clip_dmodel*2,self.clip_dmodel)
+            self.norm_clip_features=nn.LayerNorm(self.clip_dmodel)
 
         #FFN
-
-        if not self.concat_interaction:
+        """
+        if not self.concat_interaction and not self.simple_concat:
             if bool(with_clip_image)+bool(with_clip_text)==2:
                 self.enter_dim=self.distilbert_dmodel*3
 
             elif bool(with_clip_image)+bool(with_clip_text)==1:
                 self.enter_dim=self.distilbert_dmodel*2
-
             else:
                 self.enter_dim=distilbert_dmodel
-        else:
+
+        elif self.concat_interaction and not self.simple_concat:
             if bool(with_clip_image)+bool(with_clip_text)==2:
                 self.enter_dim=self.distilbert_dmodel*6
-
             elif bool(with_clip_image)+bool(with_clip_text)==1:
                 self.enter_dim=self.distilbert_dmodel*5
-
             else:
                 self.enter_dim=distilbert_dmodel*4
+
+        elif self.simple_concat and not self.concat_interaction:
+            if bool(with_clip_image)+bool(with_clip_text)==2:
+                self.enter_dim=self.distilbert_dmodel*4
+
+            elif bool(with_clip_image)+bool(with_clip_text)==1:
+                self.enter_dim=self.distilbert_dmodel*3
+            else:
+                self.enter_dim=distilbert_dmodel*2
+        
+        else:
+            raise ValueError("Can't use both concat_interaction and simple_concat modes at the same time")
+
+        """
+        if with_clip_image or with_clip_text:
+            self.enter_dim=self.distilbert_dmodel+self.clip_dmodel
+        else:
+            self.enter_dim=self.distilbert_dmodel
 
 
         self.first_layer_norm=nn.LayerNorm(self.enter_dim)
@@ -94,6 +148,8 @@ class DistilbertResnetModel(nn.Module):
         
         self.fc_layers=nn.ModuleList(fc_layers)
         self.fc_norm_layers=nn.ModuleList(fc_norm_layers)
+
+        self.dropout_layer=nn.Dropout(p=self.dropout_ca)
 
     def forward(self,
                 images : torch.Tensor,
@@ -133,53 +189,90 @@ class DistilbertResnetModel(nn.Module):
         attn_mask_image=torch.ones(attention_mask.shape[0],x_image.shape[1])  
 
         ca_image_output=self.ca_image(query=x_image,key=x_text,value=x_text,key_padding_mask=(attention_mask==0))
-        x_image=x_image+ca_image_output[0]
-        #residual connection
-        x_image=self.layer_norm_ca_image(x_image)
-        #normalization
+        x_image=x_image+self.dropout_layer(ca_image_output[0])
+        #residual connection adding the cross attention output
+        x_image=self.layer_norm_ca_attn_image(x_image)
+        #normalization after the first residual connection adding the cross attention output
+        x_image=x_image+self.dropout_layer(self.fnn_ca_image(x_image))
+        #residual connection adding the fnn output
+        x_image=self.layer_norm_ca_fnn_image(x_image)
+        #normalization after the second residual connection adding the fnn output
 
         ca_text_output=self.ca_text(query=x_text,key=x_image,value=x_image,key_padding_mask=(attn_mask_image==0))
-        x_text=x_text+ca_text_output[0]
-        #residual connection
-        x_text=self.layer_norm_ca_text(x_text)
-        #normalization
+        x_text=x_text+self.dropout_layer(ca_text_output[0])
+        #residual connection adding the cross attention output
+        x_text=self.layer_norm_ca_attn_text(x_text)
+        #normalization after the first residual connection adding the cross attention output
+        x_text=x_text+self.dropout_layer(self.fnn_ca_text(x_text))
+        #residual connection adding the fnn output
+        x_text=self.layer_norm_ca_fnn_text(x_text)
+        #normalization after the second residual connection adding the fnn output
+
 
         x_text_pooled=x_text.mean(dim=1)
+        x_text_pooled=self.norm_text_pool(x_text_pooled)
         x_image_pooled=x_image.mean(dim=1)
+        x_image_pooled=self.norm_image_pool(x_image_pooled)
 
 
-        if clip_image_embeddings is not None:
-            clip_image_embeddings=self.projection_clip_image(clip_image_embeddings)
+        if clip_image_embeddings is not None and clip_text_embeddings is None:
+            clip_image_embeddings=self.norm_clip_image(clip_image_embeddings)
         
-        if clip_text_embeddings is not None:
-            clip_text_embeddings=self.projection_clip_text(clip_text_embeddings)
+        if clip_text_embeddings is not None and clip_image_embeddings is None:
+            clip_text_embeddings=self.norm_clip_text(clip_text_embeddings)
+        
+        if clip_image_embeddings is not None and clip_text_embeddings is not None:
+            clip_features=torch.concat([clip_image_embeddings*clip_text_embeddings,abs(clip_image_embeddings-clip_text_embeddings)],dim=1)
+            clip_features=self.projection_clip_features(clip_features)
+            clip_features=self.norm_clip_features(clip_features)
 
-        if not self.concat_interaction:
+
+        if not self.concat_interaction and not self.simple_concat:
             x=(x_text_pooled+x_image_pooled)/2
+            x=self.norm_x(x)
             if clip_image_embeddings is not None and clip_text_embeddings is not None:
-                x=torch.concat([x,clip_image_embeddings,clip_text_embeddings],dim=1)
+                x=torch.concat([x,clip_features],dim=1)
             elif clip_image_embeddings is not None and clip_text_embeddings is None:
                 x=torch.concat([x,clip_image_embeddings],dim=1)
             elif clip_image_embeddings is None and clip_text_embeddings is not None:
                 x=torch.concat([x,clip_text_embeddings],dim=1)
             else:
                 x=x
+        elif self.concat_interaction and not self.simple_concat:
+            x=torch.concat([x_text_pooled,x_image_pooled,abs(x_text_pooled-x_image_pooled),x_text_pooled*x_image_pooled],dim=1)
+            x=self.projection_x(x)
+            x=self.norm_x(x)
+            if clip_image_embeddings is not None and clip_text_embeddings is not None:
+                x=torch.concat([x,clip_features],dim=1)
+            elif clip_image_embeddings is not None and clip_text_embeddings is None:
+                x=torch.concat([x,clip_image_embeddings],dim=1)
+            elif clip_image_embeddings is None and clip_text_embeddings is not None:
+                x=torch.concat([x,clip_text_embeddings],dim=1)
+            else:
+                x=x
+        
+        elif self.simple_concat and not self.concat_interaction:
+            x=torch.concat([x_text_pooled,x_image_pooled],dim=1)
+            x=self.projection_x(x)
+            x=self.norm_x(x)
+            if clip_image_embeddings is not None and clip_text_embeddings is not None:
+                x=torch.concat([x,clip_features],dim=1)
+            elif clip_image_embeddings is not None and clip_text_embeddings is None:
+                x=torch.concat([x,clip_image_embeddings],dim=1)
+            elif clip_image_embeddings is None and clip_text_embeddings is not None:
+                x=torch.concat([x,clip_text_embeddings],dim=1)
+            else:
+                x=x
+                
         else:
-            x=torch.concat([x_text_pooled,x_image_pooled,abs(x_text_pooled-x_image_pooled),x_text_pooled*x_image_pooled])
-            if clip_image_embeddings is not None and clip_text_embeddings is not None:
-                x=torch.concat([x,clip_image_embeddings,clip_text_embeddings],dim=1)
-            elif clip_image_embeddings is not None and clip_text_embeddings is None:
-                x=torch.concat([x,clip_image_embeddings],dim=1)
-            elif clip_image_embeddings is None and clip_text_embeddings is not None:
-                x=torch.concat([x,clip_text_embeddings],dim=1)
-            else:
-                x=x
+            raise ValueError("Can't use both concat_interaction and simple_concat modes at the same time")
+
 
         x=self.first_layer_norm(x)
         for i in range(len(self.fc_layers)-1):
             x=self.fc_layers[i](x)
             x=self.fc_norm_layers[i](x)
-            x=nn.functional.relu(x)
+            x=nn.functional.gelu(x)
             x=nn.functional.dropout(x,p=self.dropout,training=self.training)
         logits=self.fc_layers[-1](x)
         return logits

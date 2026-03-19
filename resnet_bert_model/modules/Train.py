@@ -10,6 +10,10 @@ from .models_architectures import DistilbertResnetModel
 from torch.nn.modules import loss
 from typing import Tuple, List
 from torch.utils.data import DataLoader
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from common_files import save_performances
 
 class Train():
     def __init__(self,
@@ -24,7 +28,10 @@ class Train():
                  patience : int=2,
                  min_improvement : float=1e-3,
                  n_frozen_distilbert_layers : int=5,
-                 n_frozen_resnet_layers : int=3):
+                 n_frozen_resnet_layers : int=3,
+                 with_clip_text:bool=False,
+                 with_clip_images:bool=False,
+                 concat:bool=False):
         """
         model: the DistilbertResnetModel we train
         loss_fn: the loss function we use for the training
@@ -50,9 +57,13 @@ class Train():
         self.n_frozen_resnet_layers=n_frozen_resnet_layers
         self.freeze_layers(n_frozen_distilbert_layers,n_frozen_resnet_layers)
 
+        self.with_clip_images=with_clip_images
+        self.with_clip_text=with_clip_text
+        self.concat=concat
+
         head_params,backbone_params=self.get_params()
-        #self.optimizer=AdamW([{"params": head_params, "lr": lr},{"params": backbone_params, "lr": 1e-4}],weight_decay=weight_decay)
-        self.optimizer=AdamW(backbone_params+head_params,lr=lr,weight_decay=weight_decay)
+        self.optimizer=AdamW([{"params": head_params, "lr": lr},{"params": backbone_params, "lr": 1e-3}],weight_decay=weight_decay)
+        #self.optimizer=AdamW(backbone_params+head_params,lr=lr,weight_decay=weight_decay)
         self.scheduler=get_linear_schedule_with_warmup(self.optimizer,n_warmup_steps,n_steps)
         #self.scheduler=ReduceLROnPlateau(self.optimizer,mode="max",factor=0.5,patience=1,threshold=1e-3)
 
@@ -63,8 +74,39 @@ class Train():
     def get_params(self) ->Tuple[List[torch.nn.Parameter], ...]:
         head_params=[]
         backbone_params=[]
-        for module in [self.model.projection_image,self.model.layer_norm_image,self.model.layer_norm_text,self.model.ca_text,self.model.ca_image,self.model.layer_norm_ca_image,self.model.layer_norm_ca_text,self.model.fc_layers,self.model.fc_norm_layers]:
+
+        head_modules=[self.model.projection_image,
+        self.model.layer_norm_image,
+        self.model.layer_norm_text,
+        self.model.ca_text,
+        self.model.ca_image,
+        self.model.fnn_ca_image,
+        self.model.fnn_ca_text,
+        self.model.layer_norm_ca_attn_image,
+        self.model.layer_norm_ca_attn_text,
+        self.model.layer_norm_ca_fnn_image,
+        self.model.layer_norm_ca_fnn_text,
+        self.model.norm_text_pool,
+        self.model.norm_image_pool,
+        self.model.norm_x,
+        self.model.first_layer_norm,
+        self.model.fc_layers,
+        self.model.fc_norm_layers]
+
+        if self.with_clip_images and not self.with_clip_text:
+            head_modules.append(self.model.norm_clip_image)
+        if not self.with_clip_images and self.with_clip_text:
+            head_modules.append(self.model.norm_clip_text)
+        if self.with_clip_images and self.with_clip_text:
+            head_modules.append(self.model.projection_clip_features)
+            head_modules.append(self.model.norm_clip_features)
+        
+        if self.concat:
+            head_modules.append(self.model.projection_x)
+
+        for module in head_modules:
             head_params+=[p for p in module.parameters() if p.requires_grad==True]
+
         for module in [self.model.distilbert_model,self.model.resnet_model]:
             backbone_params+=[p for p in module.parameters() if p.requires_grad==True]
         return head_params,backbone_params
@@ -102,35 +144,12 @@ class Train():
             for p in getattr(self.model.resnet_model,resnet_layers[i]).parameters():
                 p.requires_grad=False
     
-    """
-    This function saves the performances per epoch of the model
-    """
-    def save_performances(self,
-                          path:str,
-                          epoch_train_losses:list,
-                          epoch_train_f1:list,
-                          epoch_train_accuracies:list,
-                          epoch_val_losses:list,
-                          epoch_val_f1:list,
-                          epoch_val_accuracies:list):
-        
-        train_performances={
-            "epoch_train_losses":torch.tensor(epoch_train_losses),
-            "epoch_train_f1":torch.tensor(epoch_train_f1),
-            "epoch_train_accuracies":torch.tensor(epoch_train_accuracies),
-
-            "epoch_val_losses":torch.tensor(epoch_val_losses),
-            "epoch_val_f1":torch.tensor(epoch_val_f1),
-            "epoch_val_accuracies":torch.tensor(epoch_val_accuracies)
-        }   
-        torch.save(train_performances,f"{path}/epoch_performances.pt")
 
     def run_training(self,
                      train_dataloader: DataLoader,
                      val_dataloader: DataLoader,
                      path: str,
-                     with_clip_text:bool=False,
-                     with_clip_images:bool=False):
+                     ):
         
         epoch_train_losses=[]
         #list of training loss per epoch
@@ -170,16 +189,16 @@ class Train():
                 batch["images"] = batch["images"].float().to(self.device)
                 batch["input_ids"] = batch["input_ids"].long().to(self.device)
                 batch["attention_mask"] = batch["attention_mask"].long().to(self.device)
-                if with_clip_images:
+                if self.with_clip_images:
                     batch["images_embeddings"] = batch["images_embeddings"].float().to(self.device)
-                if with_clip_text:
+                if self.with_clip_text:
                     batch["texts_embeddings"] = batch["texts_embeddings"].float().to(self.device)
 
-                if with_clip_images and with_clip_text:
+                if self.with_clip_images and self.with_clip_text:
                     logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"],clip_image_embeddings=batch["images_embeddings"]).float()
-                elif with_clip_images and not with_clip_text:
+                elif self.with_clip_images and not self.with_clip_text:
                     logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_image_embeddings=batch["images_embeddings"]).float()
-                elif with_clip_text and not with_clip_images:
+                elif self.with_clip_text and not self.with_clip_images:
                     logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"]).float()
                 else:
                     logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"]).float()
@@ -211,16 +230,16 @@ class Train():
                     batch["images"] = batch["images"].float().to(self.device)
                     batch["input_ids"] = batch["input_ids"].long().to(self.device)
                     batch["attention_mask"] = batch["attention_mask"].long().to(self.device)
-                    if with_clip_images:
+                    if self.with_clip_images:
                         batch["images_embeddings"] = batch["images_embeddings"].float().to(self.device)
-                    if with_clip_text:
+                    if self.with_clip_text:
                         batch["texts_embeddings"] = batch["texts_embeddings"].float().to(self.device)
 
-                    if with_clip_images and with_clip_text:
+                    if self.with_clip_images and self.with_clip_text:
                         logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"],clip_image_embeddings=batch["images_embeddings"]).float()
-                    elif with_clip_images and not with_clip_text:
+                    elif self.with_clip_images and not self.with_clip_text:
                         logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_image_embeddings=batch["images_embeddings"]).float()
-                    elif with_clip_text and not with_clip_images:
+                    elif self.with_clip_text and not self.with_clip_images:
                         logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"]).float()
                     else:
                         logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"]).float()
@@ -274,7 +293,7 @@ class Train():
                 logger.info(f"Training stops after {epoch} epochs")
                 break
         
-        self.save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
+        save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
             
 
                 
