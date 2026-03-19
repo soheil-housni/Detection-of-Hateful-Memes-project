@@ -212,7 +212,13 @@ models/
 *.pt
 *.pth
 
-!train_savings/
-!train_savings/**
+!CLIP_model/modules/train_savings/
+!CLIP_model/modules/train_savings/**
+
+!FLAVA_model/modules/train_savings/
+!FLAVA_model/modules/train_savings/**
+
+!RESNET_BERT_model/modules/train_savings/
+!RESNET_BERT_model/modules/train_savings/**
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks,visualstudiocode
