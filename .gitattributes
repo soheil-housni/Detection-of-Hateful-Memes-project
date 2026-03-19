@@ -1,3 +1,6 @@
-*pt filter=lfs diff=lfs merge=lfs -text
-*.pt filter=lfs diff=lfs merge=lfs -text
-.pth filter=lfs diff=lfs merge=lfs -text
+CLIP_model/modules/train_savings/**/*.pt filter=lfs diff=lfs merge=lfs -text
+FLAVA_model/modules/train_savings/**/*.pt filter=lfs diff=lfs merge=lfs -text
+RESNET_BERT_model/modules/train_savings/**/*.pt filter=lfs diff=lfs merge=lfs -text
+CLIP_model/modules/train_savings/**/*.pth filter=lfs diff=lfs merge=lfs -text
+FLAVA_model/modules/train_savings/**/*.pth filter=lfs diff=lfs merge=lfs -text
+RESNET_BERT_model/modules/train_savings/**/*.pth filter=lfs diff=lfs merge=lfs -text
