@@ -12,8 +12,9 @@ the validation dataframe being extracted from a second file.
 """
 
 
-def split(train_df:pd.DataFrame)->Tuple[pd.DataFrame]:
-    train_df,test_df=train_test_split(train_df,test_size=0.1,random_state=5,shuffle=True,stratify=train_df["label"])
+def split(train_df:pd.DataFrame,
+          random_state: int =42)->Tuple[pd.DataFrame]:
+    train_df,test_df=train_test_split(train_df,test_size=0.1,random_state=random_state,shuffle=True,stratify=train_df["label"])
     return train_df,test_df
 
 

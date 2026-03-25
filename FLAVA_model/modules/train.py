@@ -6,7 +6,9 @@ from loguru import logger
 from .models_architectures import HeadClassifierFLAVAModel
 from torch.nn.modules import loss
 from torch.utils.data import DataLoader
-from ...common_files.performances_saving import save_performances
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+from common_files.performances_saving import save_performances
 
 
 class Train():

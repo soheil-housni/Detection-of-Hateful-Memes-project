@@ -6,7 +6,9 @@ from torch.utils.data import Dataset
 import torch
 
 
-def split_clip_embeddings(original_train_data:dict):
+def split_clip_embeddings(original_train_data:dict,
+                          seed:int=42):
+    
     copy_data=original_train_data.copy()
     for key in list(copy_data.keys()):
         copy_data[key]=copy_data[key].numpy()
@@ -16,7 +18,8 @@ def split_clip_embeddings(original_train_data:dict):
                                                                                copy_data["sim_scores"],
                                                                                copy_data["labels"],
                                                                                test_size=0.1,
-                                                                               stratify=original_train_data["labels"])
+                                                                               stratify=original_train_data["labels"],
+                                                                               random_state=seed)
     train_data={
         "texts_embeddings":torch.tensor(train_text_embeddings),
         "images_embeddings":torch.tensor(train_image_embeddings),
