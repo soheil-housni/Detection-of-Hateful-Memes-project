@@ -50,7 +50,7 @@ class Train():
         self.device=device
         self.criterion=loss_fn
         self.n_epochs=n_epochs
-        self.model.to(self.device)
+        self.model=self.model.to(self.device)
         self.patience=patience
         self.min_improvement=min_improvement
         self.n_frozen_distilbert_layers=n_frozen_distilbert_layers

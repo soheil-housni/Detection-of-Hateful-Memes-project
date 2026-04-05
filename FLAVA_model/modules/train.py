@@ -41,7 +41,7 @@ class Train():
         self.optimizer=optmizer
         self.n_epochs=n_epochs
         self.scheduler=scheduler
-        self.model.to(self.device)
+        self.model=self.model.to(self.device)
         self.patience=patience
         self.min_improvement=min_improvement
     

@@ -23,7 +23,7 @@ class CreationClipDataset(Dataset):
 
     def __getitem__(self,idx:int) -> dict:
         img_path = f"../data/{self.df['img'].iloc[idx]}"
-        img=Image.open(img_path) #as img:
+        img=Image.open(img_path).convert("RGB") #as img:
             #img=img.resize((224,224))
             #img = img.convert("RGB")
             #img = self.to_tensor(img)

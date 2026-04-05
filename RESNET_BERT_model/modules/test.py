@@ -82,7 +82,7 @@ class Test():
             logger.info(f"Test F1 Score = {f1}")
             logger.info(f"Test Accuracy: = {accuracy}")
 
-            return f1,accuracy,final_loss,all_predictions.numpy(),all_targets.numpy()
+            return f1,accuracy,final_loss,all_predictions.numpy(),all_targets.numpy(),logits.numpy()
 
 
 

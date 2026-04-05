@@ -40,7 +40,7 @@ class Train():
         self.optimizer=optmizer
         self.n_epochs=n_epochs
         self.scheduler=scheduler
-        self.model.to(self.device)
+        self.model=self.model.to(self.device)
         self.patience=patience
         self.min_improvement=min_improvement
 
@@ -106,6 +106,7 @@ class Train():
                     logits=self.model(batch["texts_embeddings"],batch["images_embeddings"],batch["sim_scores"]).float()
                 else:
                     logits=self.model(batch["texts_embeddings"],batch["images_embeddings"]).float()
+                    
                 targets=batch["labels"].long().to(self.device)
                 #Forward of the model that returns the logits
                 loss=self.criterion(logits,targets)

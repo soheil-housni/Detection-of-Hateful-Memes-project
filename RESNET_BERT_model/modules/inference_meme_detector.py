@@ -48,15 +48,17 @@ class MemeDetector():
         if self.with_clip_image or self.with_clip_text:
             clip_input=self.clip_preprocessing()
             clip_text_embedding,clip_image_embedding=self.get_clip_embeddings(clip_input)
-
-        if self.with_clip_image and self.with_clip_text:
-            logit=self.model(images=meme_image_processed,input_ids=meme_text_processed["input_ids"],attention_mask=meme_text_processed["attention_mask"],clip_text_embeddings=clip_text_embedding,clip_image_embeddings=clip_image_embedding)
-        elif self.with_clip_image and not self.with_clip_text:
-            logit=self.model(images=meme_image_processed,input_ids=meme_text_processed["input_ids"],attention_mask=meme_text_processed["attention_mask"],clip_image_embeddings=clip_image_embedding)
-        elif not self.with_clip_image and self.with_clip_text:
-            logit=self.model(images=meme_image_processed,input_ids=meme_text_processed["input_ids"],attention_mask=meme_text_processed["attention_mask"],clip_text_embeddings=clip_text_embedding)
-        else:
-            logit=self.model(images=meme_image_processed,input_ids=meme_text_processed["input_ids"],attention_mask=meme_text_processed["attention_mask"])
+        
+        self.model.eval()
+        with torch.inference_mode():
+            if self.with_clip_image and self.with_clip_text:
+                logit=self.model(images=meme_image_processed,input_ids=meme_text_processed["input_ids"],attention_mask=meme_text_processed["attention_mask"],clip_text_embeddings=clip_text_embedding,clip_image_embeddings=clip_image_embedding)
+            elif self.with_clip_image and not self.with_clip_text:
+                logit=self.model(images=meme_image_processed,input_ids=meme_text_processed["input_ids"],attention_mask=meme_text_processed["attention_mask"],clip_image_embeddings=clip_image_embedding)
+            elif not self.with_clip_image and self.with_clip_text:
+                logit=self.model(images=meme_image_processed,input_ids=meme_text_processed["input_ids"],attention_mask=meme_text_processed["attention_mask"],clip_text_embeddings=clip_text_embedding)
+            else:
+                logit=self.model(images=meme_image_processed,input_ids=meme_text_processed["input_ids"],attention_mask=meme_text_processed["attention_mask"])
         
         prediction=torch.argmax(logit,dim=1).long().item()
 
