@@ -10,13 +10,13 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../../..")))
 from common_files import seed_worker
 import numpy as np
+import mlflow
 
 class OptunaFunction():
     def __init__(self,
                  train_df,
                  val_df,
                  tokenizer,
-                 clip_embeddings,
                  device,
                  resnet_model,
                  distilbert_model,
@@ -77,19 +77,30 @@ class OptunaFunction():
             train_dataloader=DataLoader(train_dataset,batch_size=batch_size,shuffle=True,collate_fn=collate_function_obj.collate_fn,worker_init_fn=seed_worker,generator=generator)
             val_dataloader=DataLoader(val_dataset,batch_size=batch_size,shuffle=True,collate_fn=collate_function_obj.collate_fn,worker_init_fn=seed_worker,generator=generator)
 
-            n_steps=len(train_dataloader)*self.n_epochs
-            n_warmup_steps=int(warmup_prop*n_steps)
-
             model=DistilbertResnetModel(self.distilbert_model,self.resnet_model,with_clip_image=self.with_clip_image,with_clip_text=self.with_clip_text,concat_interaction=self.concat_interaction,dropout=dropout,fc_layer_sizes=fc_layers_sizes,use_n_layers=use_n_layers,dropout_ca=dropout_ca,simple_concat=self.simple_concat)
-            trainer=Train(model=model,loss_fn=self.loss_fn,n_epochs=self.n_epochs,device=self.device,n_steps=n_steps,n_warmup_steps=n_warmup_steps,n_frozen_distilbert_layers=n_frozen_distilbert_layers,n_frozen_resnet_layers=n_frozen_resnet_layers,weight_decay=weight_decay,lr=lr,with_clip_images=self.with_clip_image,with_clip_text=self.with_clip_text,concat=self.concat_interaction)
+            trainer=Train(model=model,
+                          loss_fn=self.loss_fn,
+                          n_epochs=self.n_epochs,
+                          device=self.device,
+                          warmup_prop=warmup_prop,
+                          n_frozen_distilbert_layers=n_frozen_distilbert_layers,
+                          n_frozen_resnet_layers=n_frozen_resnet_layers,
+                          weight_decay=weight_decay,
+                          lr=lr,
+                          with_clip_images=self.with_clip_image,
+                          with_clip_text=self.with_clip_text,
+                          concat=self.concat_interaction,
+                          train_dataloader=train_dataloader,
+                          val_dataloader=val_dataloader,
+                          optuna_study=True)
 
             if not os.path.exists(f"./train_savings/model_{trial.number}"):
                 os.mkdir(f"./train_savings/model_{trial.number}")
-
+            
             path=f"./train_savings/model_{trial.number}"
             logger.info(f"Trial number {trial.number}: ")
-            strict_best_val_f1=trainer.Train(path,trial)
-            logger.info("-------------------------------------------------------------------")
+            strict_best_val_f1=trainer.run_training(path,trial)
+            logger.info("------------------------------------------------------------------------")
 
             return strict_best_val_f1
 

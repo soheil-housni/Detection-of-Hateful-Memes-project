@@ -303,7 +303,7 @@ class Train():
             #Early stopping
             if val_f1_score<best_val_f1+self.min_improvement:
                 epoch_counter+=1
-                if val_f1_score>strict_best_val_f1:
+                if val_f1_score>best_val_f1:
                     strict_best_val_f1=val_f1_score
                     best_val_loss=val_loss
                     best_val_accuracy=val_accuracy_score
@@ -353,26 +353,27 @@ class Train():
                 )
         
         if self.optuna_study:
-            mlflow.log_params(hyperparameters_dict)
-            mlflow.log_metrics({
-                "best_val_f1":strict_best_val_f1,
-                "best_val_accuracy":best_val_accuracy,
-                "best_val_loss":best_val_loss
-            })
-
-            for epoch,(epoch_train_f1,epoch_train_accuracy,epoch_train_loss,epoch_val_f1,epoch_val_accuracy,epoch_val_loss) in zip(epoch_train_f1,epoch_train_accuracies,epoch_train_losses,epoch_val_f1,epoch_val_accuracies,epoch_val_losses):
+            with mlflow.start_run(run_name=f"model_{trial.number}"):
+                mlflow.log_params(hyperparameters_dict)
                 mlflow.log_metrics({
-                "epoch_train_f1":epoch_train_f1,
-                "epoch_train_accuracy":epoch_train_accuracy,
-                "epoch_train_loss":epoch_train_loss,
-                "epoch_val_f1":epoch_val_f1,
-                "epoch_val_accuracy":epoch_val_accuracy,
-                "epoch_val_loss":epoch_val_loss
-                },step=epoch)
-            
-            model_name=f"model_{trial.number}"
-            mlflow.set_tags(hyperparameters_dict)
-            mlflow.pytorch.log_model(best_model,model_name)
+                    "best_val_f1":strict_best_val_f1,
+                    "best_val_accuracy":best_val_accuracy,
+                    "best_val_loss":best_val_loss
+                })
+
+                for epoch,(epoch_train_f1,epoch_train_accuracy,epoch_train_loss,epoch_val_f1,epoch_val_accuracy,epoch_val_loss) in zip(epoch_train_f1,epoch_train_accuracies,epoch_train_losses,epoch_val_f1,epoch_val_accuracies,epoch_val_losses):
+                    mlflow.log_metrics({
+                    "epoch_train_f1":epoch_train_f1,
+                    "epoch_train_accuracy":epoch_train_accuracy,
+                    "epoch_train_loss":epoch_train_loss,
+                    "epoch_val_f1":epoch_val_f1,
+                    "epoch_val_accuracy":epoch_val_accuracy,
+                    "epoch_val_loss":epoch_val_loss
+                    },step=epoch)
+                
+                model_name=f"model_{trial.number}"
+                mlflow.set_tags(hyperparameters_dict)
+                mlflow.pytorch.log_model(best_model,model_name)
         
         return strict_best_val_f1
             
