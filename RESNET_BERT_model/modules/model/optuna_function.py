@@ -94,7 +94,7 @@ class OptunaFunction():
                           val_dataloader=val_dataloader,
                           optuna_study=True)
 
-            if not os.path.exists(f"./train_savings/model_{trial.number}"):
+            if not os.path.exists(f"./train_savings/{self.mode}/model_{trial.number}"):
                 os.mkdir(f"./train_savings/{self.mode}/model_{trial.number}")
             
             path=f"./train_savings/{self.mode}/model_{trial.number}"
