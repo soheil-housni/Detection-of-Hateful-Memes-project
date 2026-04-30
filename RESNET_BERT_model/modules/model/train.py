@@ -72,7 +72,7 @@ class Train():
         #self.optimizer=AdamW(backbone_params+head_params,lr=lr,weight_decay=weight_decay)
 
         self.train_dataloader=train_dataloader
-        self.val_dataloader=val_dataloader,
+        self.val_dataloader=val_dataloader
         self.warmup_prop=warmup_prop
         self.n_steps=len(train_dataloader)*self.n_epochs
         self.n_warmup_steps=self.n_steps*self.warmup_prop
@@ -347,7 +347,7 @@ class Train():
         save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
         
         with open(f"{path}/HP.txt") as f:
-            for key,value in hyperparameters_dict().items():
+            for key,value in hyperparameters_dict.items():
                 f.write(
                     f"{key}:{value}\n"
                 )
@@ -361,14 +361,14 @@ class Train():
                     "best_val_loss":best_val_loss
                 })
 
-                for epoch,(epoch_train_f1,epoch_train_accuracy,epoch_train_loss,epoch_val_f1,epoch_val_accuracy,epoch_val_loss) in zip(epoch_train_f1,epoch_train_accuracies,epoch_train_losses,epoch_val_f1,epoch_val_accuracies,epoch_val_losses):
+                for epoch,(train_f1,train_accuracy,train_loss,val_f1,val_accuracy,val_loss) in zip(epoch_train_f1,epoch_train_accuracies,epoch_train_losses,epoch_val_f1,epoch_val_accuracies,epoch_val_losses):
                     mlflow.log_metrics({
-                    "epoch_train_f1":epoch_train_f1,
-                    "epoch_train_accuracy":epoch_train_accuracy,
-                    "epoch_train_loss":epoch_train_loss,
-                    "epoch_val_f1":epoch_val_f1,
-                    "epoch_val_accuracy":epoch_val_accuracy,
-                    "epoch_val_loss":epoch_val_loss
+                    "epoch_train_f1":train_f1,
+                    "epoch_train_accuracy":train_accuracy,
+                    "epoch_train_loss":train_loss,
+                    "epoch_val_f1":val_f1,
+                    "epoch_val_accuracy":val_accuracy,
+                    "epoch_val_loss":val_loss
                     },step=epoch)
                 
                 model_name=f"model_{trial.number}"
