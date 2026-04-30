@@ -187,7 +187,7 @@ class DistilbertResnetModel(nn.Module):
         x_text=self.distilbert_model(input_ids=input_ids,attention_mask=attention_mask).last_hidden_state
         x_text=self.layer_norm_text(x_text)
 
-        attn_mask_image=torch.ones(attention_mask.shape[0],x_image.shape[1])  
+        attn_mask_image=torch.ones(attention_mask.shape[0],x_image.shape[1],device=attention_mask.device)  
 
         ca_image_output=self.ca_image(query=x_image,key=x_text,value=x_text,key_padding_mask=(attention_mask==0))
         x_image=x_image+self.dropout_layer(ca_image_output[0])
