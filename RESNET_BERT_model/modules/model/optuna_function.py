@@ -61,11 +61,6 @@ class OptunaFunction():
             lr=trial.suggest_float("lr",self.hyperparemeters_ranges["lr"]["low"],self.hyperparemeters_ranges["lr"]["high"],log=self.hyperparemeters_ranges["lr"]["log"])
             weight_decay=trial.suggest_float("weight_decay",self.hyperparemeters_ranges["weight_decay"]["low"],self.hyperparemeters_ranges["weight_decay"]["high"],log=self.hyperparemeters_ranges["weight_decay"]["log"])
             warmup_prop=trial.suggest_float("warmup_prop",self.hyperparemeters_ranges["warmup_prop"]["low"],self.hyperparemeters_ranges["warmup_prop"]["high"],step=self.hyperparemeters_ranges["warmup_prop"]["step"])
-            use_n_layers=trial.suggest_int("use_n_layers",self.hyperparemeters_ranges["use_n_layers"]["low"],self.hyperparemeters_ranges["use_n_layers"]["high"],step=self.hyperparemeters_ranges["use_n_layers"]["step"])
-            fc_layer_1_size=trial.suggest_int("fc_layer_1_size",self.hyperparemeters_ranges["fc_layer_1_size"]["low"],self.hyperparemeters_ranges["fc_layer_1_size"]["high"],step=self.hyperparemeters_ranges["fc_layer_1_size"]["step"])
-            fc_layers_sizes=[fc_layer_1_size]
-            n_frozen_distilbert_layers=trial.suggest_int("n_frozen_distilbert_layers",self.hyperparemeters_ranges["n_frozen_distilbert_layers"]["low"],self.hyperparemeters_ranges["n_frozen_distilbert_layers"]["high"],step=self.hyperparemeters_ranges["n_frozen_distilbert_layers"]["step"])
-            n_frozen_resnet_layers=trial.suggest_int("n_frozen_resnet_layers",self.hyperparemeters_ranges["n_frozen_resnet_layers"]["low"],self.hyperparemeters_ranges["n_frozen_resnet_layers"]["high"],step=self.hyperparemeters_ranges["n_frozen_resnet_layers"]["step"])
 
 
             train_dataset=CreationDataset(self.train_df,"../CLIP_model/modules/clip_embeddings/train_clip_embeddings.pt")
@@ -77,14 +72,14 @@ class OptunaFunction():
             train_dataloader=DataLoader(train_dataset,batch_size=batch_size,shuffle=True,collate_fn=collate_function_obj.collate_fn,worker_init_fn=seed_worker,generator=generator)
             val_dataloader=DataLoader(val_dataset,batch_size=batch_size,shuffle=True,collate_fn=collate_function_obj.collate_fn,worker_init_fn=seed_worker,generator=generator)
 
-            model=DistilbertResnetModel(self.distilbert_model,self.resnet_model,with_clip_image=self.with_clip_image,with_clip_text=self.with_clip_text,concat_interaction=self.concat_interaction,dropout=dropout,fc_layer_sizes=fc_layers_sizes,use_n_layers=use_n_layers,dropout_ca=dropout_ca,simple_concat=self.simple_concat)
+            model=DistilbertResnetModel(self.distilbert_model,self.resnet_model,with_clip_image=self.with_clip_image,with_clip_text=self.with_clip_text,concat_interaction=self.concat_interaction,dropout=dropout,fc_layer_sizes=[384],use_n_layers=1,dropout_ca=dropout_ca,simple_concat=self.simple_concat)
             trainer=Train(model=model,
                           loss_fn=self.loss_fn,
                           n_epochs=self.n_epochs,
                           device=self.device,
                           warmup_prop=warmup_prop,
-                          n_frozen_distilbert_layers=n_frozen_distilbert_layers,
-                          n_frozen_resnet_layers=n_frozen_resnet_layers,
+                          n_frozen_distilbert_layers=6,
+                          n_frozen_resnet_layers=4,
                           weight_decay=weight_decay,
                           lr=lr,
                           with_clip_images=self.with_clip_image,
