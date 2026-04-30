@@ -12,7 +12,9 @@ from typing import Tuple, List
 from torch.utils.data import DataLoader
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+import mlflow
+import optuna
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from common_files import save_performances
 
 class Train():
@@ -21,8 +23,10 @@ class Train():
                  loss_fn : loss,
                  n_epochs: int,
                  device :torch.device,
-                 n_steps :int,
-                 n_warmup_steps: int,
+                 warmup_prop,
+                 train_dataloader,
+                 val_dataloader,
+                 optuna_study,
                  lr : float =0.01,
                  weight_decay : float =1e-4,
                  patience : int=2,
@@ -61,11 +65,21 @@ class Train():
         self.with_clip_text=with_clip_text
         self.concat=concat
 
+        self.lr=lr
+        self.weight_decay=weight_decay
         head_params,backbone_params=self.get_params()
-        self.optimizer=AdamW([{"params": head_params, "lr": lr},{"params": backbone_params, "lr": 1e-3}],weight_decay=weight_decay)
+        self.optimizer=AdamW([{"params": head_params, "lr": lr},{"params": backbone_params, "lr": 1e-5}],weight_decay=weight_decay)
         #self.optimizer=AdamW(backbone_params+head_params,lr=lr,weight_decay=weight_decay)
-        self.scheduler=get_linear_schedule_with_warmup(self.optimizer,n_warmup_steps,n_steps)
+
+        self.train_dataloader=train_dataloader
+        self.val_dataloader=val_dataloader,
+        self.warmup_prop=warmup_prop
+        self.n_steps=len(train_dataloader)*self.n_epochs
+        self.n_warmup_steps=self.n_steps*self.warmup_prop
+        self.scheduler=get_linear_schedule_with_warmup(self.optimizer,self.n_warmup_steps,self.n_steps)
         #self.scheduler=ReduceLROnPlateau(self.optimizer,mode="max",factor=0.5,patience=1,threshold=1e-3)
+
+        self.optuna_study=optuna_study
 
     """
     This function differenciates the parameters of the pretrained model used (backbone parameters)
@@ -146,9 +160,8 @@ class Train():
     
 
     def run_training(self,
-                     train_dataloader: DataLoader,
-                     val_dataloader: DataLoader,
                      path: str,
+                     trial,
                      ):
         
         epoch_train_losses=[]
@@ -167,6 +180,10 @@ class Train():
 
         epoch_counter=0
         best_val_f1=0
+        strict_best_val_f1=0
+        best_val_loss=float("inf")
+        best_val_accuracy=0
+
 
         for epoch in range(self.n_epochs):
             self.model.train()
@@ -185,7 +202,7 @@ class Train():
 
             logger.info(f"Epoch {epoch} :")
 
-            for batch in train_dataloader:
+            for batch in self.train_dataloader:
                 batch["images"] = batch["images"].float().to(self.device)
                 batch["input_ids"] = batch["input_ids"].long().to(self.device)
                 batch["attention_mask"] = batch["attention_mask"].long().to(self.device)
@@ -220,13 +237,13 @@ class Train():
                 all_train_predictions.append(predictions)
                 all_train_targets.append(targets)
             
-            self.scheduler.step()
+                self.scheduler.step()
             #Update of the learning rate at the end of the epoch
 
             self.model.eval()
             batch_val_losses=[]
             with torch.no_grad():
-                for batch in val_dataloader:
+                for batch in self.val_dataloader:
                     batch["images"] = batch["images"].float().to(self.device)
                     batch["input_ids"] = batch["input_ids"].long().to(self.device)
                     batch["attention_mask"] = batch["attention_mask"].long().to(self.device)
@@ -267,9 +284,11 @@ class Train():
             #Computation of the train accuracy score for the epoch
             val_f1_score=f1_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy(),average="weighted")
             #Computation of the validation f1 score for the epoch
-            epoch_val_losses.append(np.mean(batch_val_losses))
+            val_loss=np.mean(batch_val_losses)
+            epoch_val_losses.append(val_loss)
             epoch_val_f1.append(val_f1_score)
-            epoch_val_accuracies.append(accuracy_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy()))
+            val_accuracy_score=accuracy_score(all_val_targets.cpu().numpy(),all_val_predictions.cpu().numpy())
+            epoch_val_accuracies.append(val_accuracy_score)
             #Computation of the validation accuracy score for the epoch
             #self.scheduler.step(val_f1_score)
 
@@ -284,16 +303,78 @@ class Train():
             #Early stopping
             if val_f1_score<best_val_f1+self.min_improvement:
                 epoch_counter+=1
+                if val_f1_score>strict_best_val_f1:
+                    strict_best_val_f1=val_f1_score
+                    best_val_loss=val_loss
+                    best_val_accuracy=val_accuracy_score
+                    torch.save(self.model.state_dict(),f"{path}/model_state.pt")
+                    if self.optuna_study:
+                        best_model=self.model  
             else:
                 epoch_counter=0
                 best_val_f1=val_f1_score
-                torch.save(self.model.state_dict(),f"{path}/model_state.pt")                
+                strict_best_val_f1=best_val_f1
+                best_val_loss=val_loss
+                best_val_accuracy=val_accuracy_score
+                torch.save(self.model.state_dict(),f"{path}/model_state.pt")
+                if self.optuna_study:
+                    best_model=self.model              
             
             if epoch_counter>=self.patience:
                 logger.info(f"Training stops after {epoch} epochs")
                 break
         
+            trial.report(strict_best_val_f1, epoch)
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()
+        
+        hyperparameters_dict={
+            "batch_size":self.train_dataloader.batch_size,
+            "lr":self.lr,
+            "dropout":self.model.dropout,
+            "dropout_ca":self.model.dropout_ca,
+            "weight_decay":self.weight_decay,
+            "warmup_prop":self.warmup_prop,
+            "use_n_layers":self.model.use_n_layers,
+            "fc_layer_1_size":self.model.fc_layer_sizes[0] if len(self.model.fc_layer_sizes)>=1 else 0,
+            "fc_layer_2_size":self.model.fc_layer_sizes[1] if len(self.model.fc_layer_sizes)>=2 else 0,
+            "fc_layer_3_size":self.model.fc_layer_sizes[2] if len(self.model.fc_layer_sizes)>=3 else 0,
+            "n_frozen_distilbert_layers":self.n_frozen_distilbert_layers,
+            "n_frozen_resnet_layers":self.n_frozen_resnet_layers
+        }
+
+        
         save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
+        
+        with open(f"{path}/HP.txt") as f:
+            for key,value in hyperparameters_dict().items():
+                f.write(
+                    f"{key}:{value}\n"
+                )
+        
+        if self.optuna_study:
+            mlflow.log_params(hyperparameters_dict)
+            mlflow.log_metrics({
+                "best_val_f1":strict_best_val_f1,
+                "best_val_accuracy":best_val_accuracy,
+                "best_val_loss":best_val_loss
+            })
+
+            for epoch,(epoch_train_f1,epoch_train_accuracy,epoch_train_loss,epoch_val_f1,epoch_val_accuracy,epoch_val_loss) in zip(epoch_train_f1,epoch_train_accuracies,epoch_train_losses,epoch_val_f1,epoch_val_accuracies,epoch_val_losses):
+                mlflow.log_metrics({
+                "epoch_train_f1":epoch_train_f1,
+                "epoch_train_accuracy":epoch_train_accuracy,
+                "epoch_train_loss":epoch_train_loss,
+                "epoch_val_f1":epoch_val_f1,
+                "epoch_val_accuracy":epoch_val_accuracy,
+                "epoch_val_loss":epoch_val_loss
+                },step=epoch)
+            
+            model_name=f"model_{trial.number}"
+            mlflow.set_tags(hyperparameters_dict)
+            mlflow.pytorch.log_model(best_model,model_name)
+        
+        return strict_best_val_f1
             
 
                 

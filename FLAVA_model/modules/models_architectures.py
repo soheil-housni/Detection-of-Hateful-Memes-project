@@ -27,19 +27,18 @@ class HeadClassifierFLAVAModel(nn.Module):
         self.fc_layer_sizes=fc_layer_sizes[:use_n_layers]
         self.clip_dmodel=clip_dmodel
 
-        if bool(with_clip_image)+bool(with_clip_text)==2:
-            self.enter_dim=self.dmodel*3
+        if with_clip_image and not with_clip_text:
+            self.norm_clip_image=nn.LayerNorm(self.clip_dmodel)
+        if not with_clip_image and with_clip_text:
+            self.norm_clip_text=nn.LayerNorm(self.clip_dmodel)
+        if with_clip_image and with_clip_text:
+            self.projection_clip_features=nn.Linear(self.clip_dmodel*2,self.clip_dmodel)
+            self.norm_clip_features=nn.LayerNorm(self.clip_dmodel)
 
-        elif bool(with_clip_image)+bool(with_clip_text)==1:
-            self.enter_dim=self.dmodel*2
+        if with_clip_image or with_clip_text:
+            self.enter_dim=self.dmodel+self.clip_dmodel*2
         else:
             self.enter_dim=self.dmodel
-        
-        self.projection_clip_image=nn.Linear(self.clip_dmodel,self.dmodel)
-        self.projection_clip_text=nn.Linear(self.clip_dmodel,self.dmodel)
-
-        self.norm_proj_image=nn.LayerNorm(self.dmodel)
-        self.norm_proj_text=nn.LayerNorm(self.dmodel)
 
         self.first_layer_norm=nn.LayerNorm(self.enter_dim)
             
@@ -61,8 +60,8 @@ class HeadClassifierFLAVAModel(nn.Module):
     def forward(self,
                 pooler_embedding=None,
                 multimodal_embedding=None,
-                clip_text_embedding=None,
-                clip_image_embedding=None):
+                clip_text_embeddings=None,
+                clip_image_embeddings=None):
         
         """
         Args:
@@ -81,22 +80,24 @@ class HeadClassifierFLAVAModel(nn.Module):
         else:
             raise ValueError("Cannot use both the pooler embedding and the multimodal embeddings as input simultaneously")
         
-        if clip_text_embedding is not None:
-            clip_text_embedding=self.projection_clip_text(clip_text_embedding)
-            clip_text_embedding=self.norm_proj_text(clip_text_embedding)
-        
-        if clip_image_embedding is not None:
-            clip_image_embedding=self.projection_clip_image(clip_image_embedding)
-            clip_image_embedding=self.norm_proj_image(clip_image_embedding)
+        if clip_image_embeddings is not None and clip_text_embeddings is None:
+            clip_image_embeddings=self.norm_clip_image(clip_image_embeddings)
+        if clip_text_embeddings is not None and clip_image_embeddings is None:
+            clip_text_embeddings=self.norm_clip_text(clip_text_embeddings)
+        if clip_image_embeddings is not None and clip_text_embeddings is not None:
+            clip_features=torch.concat([clip_image_embeddings*clip_text_embeddings,abs(clip_image_embeddings-clip_text_embeddings)],dim=1)
+            clip_features=self.projection_clip_features(clip_features)
+            clip_features=self.norm_clip_features(clip_features)
 
-        if clip_text_embedding is not None and clip_image_embedding is not None:
-            x=torch.cat([flava_embedding,clip_text_embedding,clip_image_embedding],dim=1)
-        elif clip_text_embedding is not None:
-            x=torch.cat([flava_embedding,clip_text_embedding],dim=1)
-        elif clip_image_embedding is not None:
-            x=torch.cat([flava_embedding,clip_image_embedding],dim=1)
+        if clip_text_embeddings is not None and clip_image_embeddings is not None:
+            x=torch.cat([flava_embedding,clip_features],dim=1)
+        elif clip_text_embeddings is not None and clip_image_embeddings is None:
+            x=torch.cat([flava_embedding,clip_text_embeddings],dim=1)
+        elif clip_image_embeddings is not None and clip_text_embeddings is None:
+            x=torch.cat([flava_embedding,clip_image_embeddings],dim=1)
         else:
             x=flava_embedding
+
         #concatenation of FLAVA and CLIP embeddings if possible
         x=self.first_layer_norm(x)
         for i in range(len(self.fc_layers)-1):

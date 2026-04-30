@@ -12,7 +12,7 @@ from typing import Tuple, List
 from torch.utils.data import DataLoader
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from common_files import save_performances
 
 

@@ -9,7 +9,7 @@ class DistilbertResnetModel(nn.Module):
                  distilbert_model:DistilBertModel,
                  resnet_model : ResNet,
                  use_n_layers : int = 1,
-                 fc_layer_sizes : list[int] =[768] ,
+                 fc_layer_sizes : list[int] =[768],
                  resnet_dmodel : int =512,
                  distilbert_dmodel : int =768,
                  dropout : float =0.3,
@@ -39,6 +39,7 @@ class DistilbertResnetModel(nn.Module):
         self.dropout_ca=dropout_ca
         self.concat_interaction=concat_interaction
         self.simple_concat=simple_concat
+        self.use_n_layers=use_n_layers
 
         #Projection of the output of the resnet model (batch_size,49,512) in the space of the ouput of the distilbertmodel (batch_size,seq_len_768)
         #For the output of the resnet model, seq_len=49 as each kernel is of dimension (7,7), so when flattened, we have 49 patches.
@@ -134,7 +135,7 @@ class DistilbertResnetModel(nn.Module):
 
         self.first_layer_norm=nn.LayerNorm(self.enter_dim)
 
-        self.fc_layer_sizes=fc_layer_sizes[:use_n_layers]
+        self.fc_layer_sizes=fc_layer_sizes[:self.use_n_layers]
         fc_layers=[nn.Linear(self.enter_dim,self.fc_layer_sizes[0])]
         fc_norm_layers=[nn.LayerNorm(self.fc_layer_sizes[0])]
 
@@ -208,9 +209,10 @@ class DistilbertResnetModel(nn.Module):
         x_text=self.layer_norm_ca_fnn_text(x_text)
         #normalization after the second residual connection adding the fnn output
 
-
-        x_text_pooled=x_text.mean(dim=1)
+        attention_mask_sum=attention_mask.sum(dim=1,keepdim=True).clamp(1)
+        x_text_pooled=(x_text*attention_mask.unsqueeze(2)).sum(dim=1)/attention_mask_sum
         x_text_pooled=self.norm_text_pool(x_text_pooled)
+
         x_image_pooled=x_image.mean(dim=1)
         x_image_pooled=self.norm_image_pool(x_image_pooled)
 
