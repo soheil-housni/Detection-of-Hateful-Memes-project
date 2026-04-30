@@ -14,6 +14,7 @@ import mlflow
 
 class OptunaFunction():
     def __init__(self,
+                 mode,
                  train_df,
                  val_df,
                  tokenizer,
@@ -29,6 +30,7 @@ class OptunaFunction():
                  n_epochs,
                  seed:int=42):
         
+        self.mode=mode
         self.train_df=train_df
         self.val_df=val_df
         self.tokenizer=tokenizer
@@ -95,9 +97,9 @@ class OptunaFunction():
                           optuna_study=True)
 
             if not os.path.exists(f"./train_savings/model_{trial.number}"):
-                os.mkdir(f"./train_savings/model_{trial.number}")
+                os.mkdir(f"./train_savings/{self.mode}/model_{trial.number}")
             
-            path=f"./train_savings/model_{trial.number}"
+            path=f"./train_savings/{self.mode}/model_{trial.number}"
             logger.info(f"Trial number {trial.number}: ")
             strict_best_val_f1=trainer.run_training(path,trial)
             logger.info("------------------------------------------------------------------------")
