@@ -63,9 +63,7 @@ class OptunaFunction():
             warmup_prop=trial.suggest_float("warmup_prop",self.hyperparemeters_ranges["warmup_prop"]["low"],self.hyperparemeters_ranges["warmup_prop"]["high"],step=self.hyperparemeters_ranges["warmup_prop"]["step"])
             use_n_layers=trial.suggest_int("use_n_layers",self.hyperparemeters_ranges["use_n_layers"]["low"],self.hyperparemeters_ranges["use_n_layers"]["high"],step=self.hyperparemeters_ranges["use_n_layers"]["step"])
             fc_layer_1_size=trial.suggest_int("fc_layer_1_size",self.hyperparemeters_ranges["fc_layer_1_size"]["low"],self.hyperparemeters_ranges["fc_layer_1_size"]["high"],step=self.hyperparemeters_ranges["fc_layer_1_size"]["step"])
-            fc_layer_2_size=trial.suggest_int("fc_layer_2_size",self.hyperparemeters_ranges["fc_layer_2_size"]["low"],self.hyperparemeters_ranges["fc_layer_2_size"]["high"],step=self.hyperparemeters_ranges["fc_layer_2_size"]["step"])
-            fc_layer_3_size=trial.suggest_int("fc_layer_3_size",self.hyperparemeters_ranges["fc_layer_3_size"]["low"],self.hyperparemeters_ranges["fc_layer_3_size"]["high"],step=self.hyperparemeters_ranges["fc_layer_3_size"]["step"])
-            fc_layers_sizes=[fc_layer_1_size,fc_layer_2_size,fc_layer_3_size]
+            fc_layers_sizes=[fc_layer_1_size]
             n_frozen_distilbert_layers=trial.suggest_int("n_frozen_distilbert_layers",self.hyperparemeters_ranges["n_frozen_distilbert_layers"]["low"],self.hyperparemeters_ranges["n_frozen_distilbert_layers"]["high"],step=self.hyperparemeters_ranges["n_frozen_distilbert_layers"]["step"])
             n_frozen_resnet_layers=trial.suggest_int("n_frozen_resnet_layers",self.hyperparemeters_ranges["n_frozen_resnet_layers"]["low"],self.hyperparemeters_ranges["n_frozen_resnet_layers"]["high"],step=self.hyperparemeters_ranges["n_frozen_resnet_layers"]["step"])
 
