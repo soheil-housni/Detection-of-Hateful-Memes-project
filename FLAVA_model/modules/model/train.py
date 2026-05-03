@@ -7,7 +7,7 @@ from .models_architectures import HeadClassifierFLAVAModel
 from torch.nn.modules import loss
 from torch.utils.data import DataLoader
 import sys, os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from common_files.performances_saving import save_performances
 
 
@@ -78,6 +78,7 @@ class Train():
 
         epoch_counter=0
         best_val_f1=0
+        strict_best_val_f1=0
 
         for epoch in range(self.n_epochs):
             self.model.train()
@@ -108,10 +109,10 @@ class Train():
                     batch["texts_embeddings"]=batch["texts_embeddings"].float().to(self.device)
                     batch["images_embeddings"]=batch["images_embeddings"].float().to(self.device)
                     if not multimodal:
-                        logits=self.model(pooler_embedding=batch['pooler_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
+                        logits=self.model(pooler_embedding=batch['pooler_embeddings'],clip_text_embeddings=batch['texts_embeddings'],clip_image_embeddings=batch["images_embeddings"]).float()
                         #Forward of the model that returns the logits, using CLIP arguments
                     else:
-                        logits=self.model(multimodal_embedding=batch['multimodal_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
+                        logits=self.model(multimodal_embedding=batch['multimodal_embeddings'],clip_text_embeddings=batch['texts_embeddings'],clip_image_embeddings=batch["images_embeddings"]).float()
                 else:
                     if not multimodal:
                         logits=self.model(pooler_embedding=batch['pooler_embeddings']).float()
@@ -153,10 +154,10 @@ class Train():
                         batch["texts_embeddings"]=batch["texts_embeddings"].float().to(self.device)
                         batch["images_embeddings"]=batch["images_embeddings"].float().to(self.device)
                         if not multimodal:
-                            logits=self.model(pooler_embedding=batch['pooler_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
+                            logits=self.model(pooler_embedding=batch['pooler_embeddings'],clip_text_embeddings=batch['texts_embeddings'],clip_image_embeddings=batch["images_embeddings"]).float()
                             #Forward of the model that returns the logits, using CLIP arguments
                         else:
-                            logits=self.model(multimodal_embedding=batch['multimodal_embeddings'],clip_text_embedding=batch['texts_embeddings'],clip_image_embedding=batch["images_embeddings"]).float()
+                            logits=self.model(multimodal_embedding=batch['multimodal_embeddings'],clip_text_embeddings=batch['texts_embeddings'],clip_image_embeddings=batch["images_embeddings"]).float()
                     else:
                         if not multimodal:
                             logits=self.model(pooler_embedding=batch['pooler_embeddings']).float()
@@ -201,14 +202,20 @@ class Train():
             logger.info(f"Epoch {epoch}: Validation F1 = {epoch_val_f1[epoch]}")
 
             if val_f1_score<best_val_f1+self.min_improvement:
+                if val_f1_score>best_val_f1:
+                    strict_best_val_f1=val_f1_score
+                    torch.save(self.model.state_dict(),f"{path}/model_state.pt")
                 epoch_counter+=1
             else:
                 epoch_counter=0
                 best_val_f1=val_f1_score
+                strict_best_val_f1=best_val_f1
                 torch.save(self.model.state_dict(),f"{path}/model_state.pt")
             
             if epoch_counter>=self.patience:
                 logger.info(f"Training stops after {epoch} epochs")
                 break
         save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
+
+        return strict_best_val_f1
             

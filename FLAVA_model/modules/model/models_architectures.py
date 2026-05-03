@@ -36,7 +36,7 @@ class HeadClassifierFLAVAModel(nn.Module):
             self.norm_clip_features=nn.LayerNorm(self.clip_dmodel)
 
         if with_clip_image or with_clip_text:
-            self.enter_dim=self.dmodel+self.clip_dmodel*2
+            self.enter_dim=self.dmodel+self.clip_dmodel
         else:
             self.enter_dim=self.dmodel
 

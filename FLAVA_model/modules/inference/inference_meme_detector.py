@@ -31,37 +31,39 @@ class MemeDetector():
         flava_input=self.flava_preprocessing(img,text)
         clip_input=self.clip_preprocessing(img,text)
 
+        flava_output=self.flava_model(input_ids=flava_input["input_ids"],pixel_values=flava_input["pixel_values"],attention_mask=flava_input["attention_mask"])
+
         if multimodal:
-            flava_input["multimodal_embeddings"]=flava_input["multimodal_embeddings"].float().to(self.device)
+            flava_multimodal_embeddings=flava_output["multimodal_embeddings"].float().to(self.device)
         else:
-            flava_input["pooler_embeddings"]=flava_input["pooler_embeddings"].float().to(self.device)
+            flava_pooler_embeddings=flava_output.multimodal_output.pooler_output.float().to(self.device)
         
         if with_clip:
-            clip_input["texts_embeddings"]=clip_input["texts_embeddings"].float().to(self.device)
-            clip_input["images_embeddings"]=clip_input["images_embeddings"].float().to(self.device)
+            clip_output=self.clip_model(input_ids=clip_input["input_ids"],pixel_values=clip_input["pixel_values"],attention_mask=clip_input["attention_mask"])
+            clip_texts_embeddings=clip_output["text_embeds"].float().to(self.device)
+            clip_images_embeddings=clip_output["image_embeds"].float().to(self.device)
             if not multimodal:
-                logit=self.model(pooler_embedding=flava_input['pooler_embeddings'],clip_text_embedding=clip_input['texts_embeddings'],clip_image_embedding=clip_input["images_embeddings"]).float()
+                logit=self.model(pooler_embedding=flava_pooler_embeddings,clip_text_embeddings=clip_texts_embeddings,clip_image_embeddings=clip_images_embeddings).float()
                 #Forward of the model that returns the logits, using CLIP arguments
             else:
-                logit=self.model(multimodal_embedding=flava_input['multimodal_embeddings'],clip_text_embedding=clip_input['texts_embeddings'],clip_image_embedding=clip_input["images_embeddings"]).float()
+                logit=self.model(multimodal_embedding=flava_multimodal_embeddings,clip_text_embeddings=clip_texts_embeddings,clip_image_embeddings=clip_images_embeddings).float()
         else:
             if not multimodal:
-                logit=self.model(pooler_embedding=flava_input['pooler_embeddings']).float()
+                logit=self.model(pooler_embedding=flava_pooler_embeddings).float()
             else:
-                logit=self.model(multimodal_embedding=flava_input['multimodal_embeddings']).float()
+                logit=self.model(multimodal_embedding=flava_multimodal_embeddings).float()
         
         prediction=torch.argmax(logit,dim=1)
 
         self.printing_meme(img,text)
 
-        if prediction==1:
+        if prediction.item()==1:
             print("Classification: The meme is hateful")
         else:
             print("Classification: The meme is lovely")
         
     
     def printing_meme(self,img,text):
-        print("The meme is :")
         plt.imshow(img)
         plt.show()
         print("---------------------------")
@@ -72,9 +74,9 @@ class MemeDetector():
 
     
     def flava_preprocessing(self,img,text):
-        clip_inputs=self.flava_processor(img,text,return_tensors="pt",padding="max_length",truncation=True, max_length=128)
-        return clip_inputs
+        flava_input=self.flava_processor(img,text,return_tensors="pt",padding="max_length",truncation=True, max_length=128)
+        return flava_input
 
     def clip_preprocessing(self,img,text):
-        clip_inputs=self.clip_processor(img,text,return_tensors="pt", padding=True, max_length=77, truncation=True)
-        return clip_inputs
+        clip_input=self.clip_processor(img,text,return_tensors="pt", padding=True, max_length=77, truncation=True)
+        return clip_input
