@@ -26,7 +26,7 @@ class Train():
                  warmup_prop,
                  train_dataloader,
                  val_dataloader,
-                 optuna_study,
+                 optuna_study:bool=False,
                  lr : float =0.01,
                  weight_decay : float =1e-4,
                  patience : int=2,
@@ -68,7 +68,7 @@ class Train():
         self.lr=lr
         self.weight_decay=weight_decay
         head_params,backbone_params=self.get_params()
-        self.optimizer=AdamW([{"params": head_params, "lr": lr},{"params": backbone_params, "lr": 1e-5}],weight_decay=weight_decay)
+        self.optimizer=AdamW([{"params": head_params, "lr": lr},{"params": backbone_params, "lr": 1e-3}],weight_decay=weight_decay)
         #self.optimizer=AdamW(backbone_params+head_params,lr=lr,weight_decay=weight_decay)
 
         self.train_dataloader=train_dataloader
@@ -161,7 +161,7 @@ class Train():
 
     def run_training(self,
                      path: str,
-                     trial,
+                     trial=None,
                      ):
         
         epoch_train_losses=[]
@@ -202,6 +202,8 @@ class Train():
 
             logger.info(f"Epoch {epoch} :")
 
+            #Reset gradients of all parameters to zero
+
             for batch in self.train_dataloader:
                 batch["images"] = batch["images"].float().to(self.device)
                 batch["input_ids"] = batch["input_ids"].long().to(self.device)
@@ -210,6 +212,8 @@ class Train():
                     batch["images_embeddings"] = batch["images_embeddings"].float().to(self.device)
                 if self.with_clip_text:
                     batch["texts_embeddings"] = batch["texts_embeddings"].float().to(self.device)
+
+                self.optimizer.zero_grad()
 
                 if self.with_clip_images and self.with_clip_text:
                     logits=self.model(images=batch["images"],input_ids=batch["input_ids"],attention_mask=batch["attention_mask"],clip_text_embeddings=batch["texts_embeddings"],clip_image_embeddings=batch["images_embeddings"]).float()
@@ -224,8 +228,6 @@ class Train():
                 targets=batch["labels"].long().to(self.device)
                 loss=self.criterion(logits,targets)
                 #Computation of the train batch loss
-                self.optimizer.zero_grad()
-                #Reset gradients of all parameters to zero
                 loss.backward()
                 #Computation of the gradient of the loss for each parameter
                 self.optimizer.step()
@@ -237,7 +239,7 @@ class Train():
                 all_train_predictions.append(predictions)
                 all_train_targets.append(targets)
             
-                self.scheduler.step()
+            self.scheduler.step()
             #Update of the learning rate at the end of the epoch
 
             self.model.eval()
@@ -309,7 +311,7 @@ class Train():
                     best_val_accuracy=val_accuracy_score
                     torch.save(self.model.state_dict(),f"{path}/model_state.pt")
                     if self.optuna_study:
-                        best_model=self.model  
+                        best_model=self.model
             else:
                 epoch_counter=0
                 best_val_f1=val_f1_score
@@ -323,36 +325,39 @@ class Train():
             if epoch_counter>=self.patience:
                 logger.info(f"Training stops after {epoch} epochs")
                 break
-        
-            trial.report(strict_best_val_f1, epoch)
-            if trial.should_prune():
-                raise optuna.exceptions.TrialPruned()
-        
-        hyperparameters_dict={
-            "batch_size":self.train_dataloader.batch_size,
-            "lr":self.lr,
-            "dropout":self.model.dropout,
-            "dropout_ca":self.model.dropout_ca,
-            "weight_decay":self.weight_decay,
-            "warmup_prop":self.warmup_prop,
-            "use_n_layers":self.model.use_n_layers,
-            "fc_layer_1_size":self.model.fc_layer_sizes[0] if len(self.model.fc_layer_sizes)>=1 else 0,
-            "fc_layer_2_size":self.model.fc_layer_sizes[1] if len(self.model.fc_layer_sizes)>=2 else 0,
-            "fc_layer_3_size":self.model.fc_layer_sizes[2] if len(self.model.fc_layer_sizes)>=3 else 0,
-            "n_frozen_distilbert_layers":self.n_frozen_distilbert_layers,
-            "n_frozen_resnet_layers":self.n_frozen_resnet_layers
-        }
+
+            if self.optuna_study:
+                trial.report(strict_best_val_f1, epoch)
+                if trial.should_prune():
+                    raise optuna.exceptions.TrialPruned()
 
         
         save_performances(path,epoch_train_losses,epoch_train_f1,epoch_train_accuracies,epoch_val_losses,epoch_val_f1,epoch_val_accuracies)
         
-        with open(f"{path}/HP.txt") as f:
-            for key,value in hyperparameters_dict.items():
-                f.write(
-                    f"{key}:{value}\n"
-                )
+        
         
         if self.optuna_study:
+            hyperparameters_dict={
+                    "batch_size":self.train_dataloader.batch_size,
+                    "lr":self.lr,
+                    "dropout":self.model.dropout,
+                    "dropout_ca":self.model.dropout_ca,
+                    "weight_decay":self.weight_decay,
+                    "warmup_prop":self.warmup_prop,
+                    "use_n_layers":self.model.use_n_layers,
+                    "fc_layer_1_size":self.model.fc_layer_sizes[0] if len(self.model.fc_layer_sizes)>=1 else 0,
+                    "fc_layer_2_size":self.model.fc_layer_sizes[1] if len(self.model.fc_layer_sizes)>=2 else 0,
+                    "fc_layer_3_size":self.model.fc_layer_sizes[2] if len(self.model.fc_layer_sizes)>=3 else 0,
+                    "n_frozen_distilbert_layers":self.n_frozen_distilbert_layers,
+                    "n_frozen_resnet_layers":self.n_frozen_resnet_layers
+                }
+            
+            with open(f"{path}/HP.txt", "w") as f:
+                for key,value in hyperparameters_dict.items():
+                    f.write(
+                        f"{key}:{value}\n"
+                    )
+
             with mlflow.start_run(run_name=f"model_{trial.number}"):
                 mlflow.log_params(hyperparameters_dict)
                 mlflow.log_metrics({

@@ -8,7 +8,7 @@ from torch.nn.modules import loss
 from torch.utils.data import DataLoader
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 from common_files import save_performances
 
 class Train():
@@ -124,8 +124,8 @@ class Train():
                 all_train_predictions.append(predictions)
                 all_train_targets.append(targets)
             
-            self.scheduler.step()
-            #Update of the learning rate at the end of the epoch
+                self.scheduler.step()
+                #Update of the learning rate at the end of the batch
 
             self.model.eval()
             batch_val_losses=[]

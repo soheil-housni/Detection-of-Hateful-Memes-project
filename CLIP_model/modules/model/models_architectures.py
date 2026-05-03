@@ -22,7 +22,8 @@ class HeadClassifierCLIPModel(nn.Module):
         self.fc_layer_sizes=fc_layer_sizes[:use_n_layers]
 
         if with_scores:
-            fc_layers=[nn.Linear(self.dmodel*5,self.fc_layer_sizes[0])]
+            self.projection_sim_score=nn.Linear(1,self.dmodel//4)
+            fc_layers=[nn.Linear(self.dmodel*4+self.dmodel//4,self.fc_layer_sizes[0])]
         else:
             fc_layers=[nn.Linear(self.dmodel*4,self.fc_layer_sizes[0])]
 
@@ -53,7 +54,7 @@ class HeadClassifierCLIPModel(nn.Module):
         """
         if sim_scores is not None:
             sim_scores=sim_scores.view(-1,1)
-            projected_sim_score=sim_scores.repeat(1, self.dmodel)
+            projected_sim_score=self.projection_sim_score(sim_scores)
             x=torch.cat([texts_embeddings,images_embeddings,abs(texts_embeddings-images_embeddings),texts_embeddings*images_embeddings,projected_sim_score],dim=1)
         else:
             x=torch.cat([texts_embeddings,images_embeddings,abs(texts_embeddings-images_embeddings),texts_embeddings*images_embeddings],dim=1)
