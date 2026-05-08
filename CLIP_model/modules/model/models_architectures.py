@@ -62,7 +62,7 @@ class HeadClassifierCLIPModel(nn.Module):
         for i in range(len(self.fc_layers)-1):
             x=self.fc_layers[i](x)
             x=self.fc_norm_layers[i](x)
-            x=nn.functional.relu(x)
+            x=nn.functional.gelu(x)
             x=nn.functional.dropout(x,p=self.dropout,training=self.training)
         logits=self.fc_layers[-1](x)
         return logits

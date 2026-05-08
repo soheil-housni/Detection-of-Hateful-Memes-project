@@ -53,7 +53,9 @@ class MemeDetector():
             else:
                 logit=self.model(multimodal_embedding=flava_multimodal_embeddings).float()
         
+        
         prediction=torch.argmax(logit,dim=1)
+
 
         self.printing_meme(img,text)
 
