@@ -2,20 +2,18 @@ import numpy as np
 import torch
 from loguru import logger
 from torchvision import transforms
-from PIL import Image
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from common_files import save_performances
 from transformers import AutoTokenizer
 from transformers import CLIPProcessor,CLIPImageProcessor,CLIPTokenizerFast,CLIPModel
-import matplotlib.pyplot as plt
 
 
 
-class MemeDetector():
+class MemeDetectorAPI():
     def __init__(self,
-                 meme_image_path:str,
+                 meme_image:str,
                  meme_text:str,
                  tokenizer:AutoTokenizer,
                  model,
@@ -24,7 +22,7 @@ class MemeDetector():
                  clip_processor=None,
                  clip_model=None):
         
-        self.meme_image=Image.open(meme_image_path).convert("RGB")
+        self.meme_image=meme_image
         self.meme_text=meme_text
         self.tokenizer=tokenizer
         self.model=model
@@ -42,7 +40,6 @@ class MemeDetector():
 
     
     def detection(self):
-        self.printing_meme()
         meme_image_processed=self.image_preprocessing()
         meme_text_processed=self.text_preprocessing()
         if self.with_clip_image or self.with_clip_text:
@@ -68,17 +65,6 @@ class MemeDetector():
         else:
             print("Classification: The meme is lovely")
             return {"label":0,"meaning":"Classification: The meme is lovely"} 
-
-
-    
-    def printing_meme(self):
-        print("The meme is :")
-        plt.imshow(self.meme_image)
-        plt.show()
-        print("---------------------------")
-        print("The text of the meme is :")
-        print(f"'{self.meme_text}'")
-        print("---------------------------")
         
 
     def image_preprocessing(self):

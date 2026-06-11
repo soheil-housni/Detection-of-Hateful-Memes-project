@@ -1,0 +1,11 @@
+__pycache__/
+data/
+.git
+*.pyc
+.gitignore
+optuna_study.db
+test_savings/
+
+single_train_savings/*
+!single_train_savings/interaction_emb_concatenation_only/
+!single_train_savings/interaction_emb_concatenation_only/**

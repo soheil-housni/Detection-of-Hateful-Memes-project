@@ -1,1 +1,2 @@
 from .inference_meme_detector import MemeDetector
+from .inference_meme_detector_api import MemeDetectorAPI
